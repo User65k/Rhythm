@@ -1,0 +1,60 @@
+[package]
+name = "rhythm_prx"
+version = "0.1.0"
+authors = ["User65k <15049544+User65k@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hyper = "0.13.6"
+tokio = { version = "0.2.21", default-features = false, features = ["tcp", "dns", "macros", "rt-core", "sync"] }
+futures-util = { version = "0.3.5", default-features = false, features = ["async-await"]}
+http = "0.2.1"
+
+#serde_json = "^1.0.39"
+regex = "^1.1.7"
+#for proxy
+native-tls = "^0.2.3"  # for HTTPS acceptor
+tokio-native-tls = "0.1.0"  # for HTTPS acceptor
+rcgen = { version = "0.8.5", features = ["x509-parser"]}
+chrono = "^0.4.15"
+#picky # custom cert gen
+#easy_ssl # openssl cert gen
+p12 = "0.1.4"
+
+#for uplink
+hyper-tls = "0.4.3"  # for HTTPS connector
+tokio-tls = "0.3.1"  # for HTTPS connector
+tokio-socks = "0.3.0"
+hyper-timeout = "0.3.1"
+#for server
+hyper-staticfile = "0.5.3"
+tokio-tungstenite = { version = "0.10", default-features = false }
+#serde_urlencoded = "0.6.1"
+#percent-encoding = "2.1"
+#cookie_crate = { version = "0.14", package = "cookie", optional = true }
+#cookie_store = { version = "0.12", optional = true }
+#async-compression = { version = "0.3.0", default-features = false, features = ["stream", "gzip", "brotli"], optional = true }
+
+
+#cookie
+#qstring
+#formdata
+#encoding_rs
+
+rustbuster = {git = "https://github.com/phra/rustbuster"}
+#plugins:
+#wasmer = "0.17.1"
+#wasmer-wasi = "0.17.1"
+
+#database:
+#sled = "0.34.3"
+#no_proto = "0.1.2"
+#ledb
+#cask
+#sonic-client
+#shortcut
+#retriever
+#icbiadb
+#structsy
