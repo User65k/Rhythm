@@ -222,7 +222,7 @@ pub fn make_client() -> HTTPClient {
     let tls_connector = tls_connector_builder
         .build()
         .expect("TLS initialization failed");
-    let https = HttpsConnector::from((proxies, tokio_tls::TlsConnector::from(tls_connector)));
+    let https = HttpsConnector::from((proxies, tokio_native_tls::TlsConnector::from(tls_connector)));
 
     let timeout = Some(Duration::from_secs(5));
     let mut toc = TimeoutConnector::new(https);

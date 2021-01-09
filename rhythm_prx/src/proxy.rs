@@ -160,7 +160,7 @@ pub async fn process_http_req(req: Request<Body>, broadcast: Notifier, client: H
 }
 pub async fn process_connect_req(
     ca: CA,
-    req: Request<Body>,
+    mut req: Request<Body>,
     dont_intercept: Arc<RegexSet>,
     broadcast: Notifier,
     client: HTTPClient) -> Result<Response<Body>, hyper::Error>
@@ -176,7 +176,7 @@ pub async fn process_connect_req(
             let auth = a.clone();
 
             tokio::task::spawn(async move {
-                match req.into_body().on_upgrade().await {
+                match hyper::upgrade::on(&mut req).await {
                     Ok(upgraded) => {
                         let parts = upgraded.downcast::<AddrStream>().expect("upgrade not AddrStream");
                         //ignore parts.read_buf - its empty in case of HTTP CONNECT

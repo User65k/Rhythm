@@ -1,46 +1,46 @@
-use hyper::upgrade::Upgraded;
+use futures_util::SinkExt;
 use hyper::{Body, Request, Response, header};
 
 use hyper_staticfile::Static;
-
-use tokio_tungstenite::{
-    WebSocketStream,
-    tungstenite::{
-        handshake::server::create_response as create_ws_response,
-        protocol::Role,
-        Message,
-        error::Error as WSErr
-    }};
-use futures_util::sink::SinkExt;
-use futures_util::stream::StreamExt;
+use tokio_util::codec::{Decoder, Framed};
+use websocket_codec::{ClientRequest, MessageCodec, Message, Opcode};
 
 use crate::Notifier;
+pub type AsyncClient = Framed<hyper::upgrade::Upgraded, MessageCodec>;
+
 
 pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Notifier) -> Result<Response<Body>, hyper::Error> {
     match req.uri().path() {
         "/events" => {
-            let (parts, body) = req.into_parts();
-            match create_ws_response(&Request::from_parts(parts, ())){
-                Ok(resp) => {
-                    tokio::task::spawn(async move {
-                        match body.on_upgrade().await {
-                            Ok(upgraded) => {
-                                if let Err(e) = websocket(upgraded, broadcast).await {
-                                    eprintln!("server io error: {}", e)
-                                };
-                            }
-                            Err(e) => eprintln!("upgrade error: {}", e),
-                        }
-                    });
-                    Ok(resp.map(|_|Body::empty()))
-                },
-                Err(e) => {
-                    let e = format!("{}",e);
-                    let mut resp = Response::new(Body::from(e));
-                    *resp.status_mut() = hyper::StatusCode::BAD_REQUEST;
-                    Ok(resp)
+            let mut res = Response::new(Body::empty());
+        
+            let ws_accept = if let Ok(req) = ClientRequest::parse(|name| {
+                let h = req.headers().get(name)?;
+                h.to_str().ok()
+            }) {
+                req.ws_accept()
+            } else {
+                *res.status_mut() = hyper::StatusCode::BAD_REQUEST;
+                return Ok(res);
+            };
+        
+            tokio::task::spawn(async move {
+                match hyper::upgrade::on(req).await {
+                    Ok(upgraded) => {
+                        let client = MessageCodec::server().framed(upgraded);
+                        websocket(client, broadcast).await;
+                    }
+                    Err(e) => eprintln!("upgrade error: {}", e),
                 }
-            }
+            });
+        
+            *res.status_mut() = hyper::StatusCode::SWITCHING_PROTOCOLS;
+        
+            let headers = res.headers_mut();
+            headers.insert(header::UPGRADE, hyper::header::HeaderValue::from_static("websocket"));
+            headers.insert(header::CONNECTION, hyper::header::HeaderValue::from_static("Upgrade"));
+            headers.insert(header::SEC_WEBSOCKET_ACCEPT, hyper::header::HeaderValue::from_str(&ws_accept).unwrap());
+            Ok(res)
         },
         "/" => {
             let resp = Response::builder()
@@ -69,17 +69,16 @@ pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Not
     }
 }
 
-async fn websocket(upgraded: Upgraded, broadcast: Notifier) -> Result<(), WSErr> {
+async fn websocket(mut stream_mut: AsyncClient, broadcast: Notifier) {
     println!("WS!");
-    let mut ws = WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await;
-    let a = ws.next().await;
-    println!("{:?}",a);
 
     let mut rx = broadcast.subscribe();
 
     while let Ok(b) = rx.recv().await {
-        ws.send(Message::text(b)).await?;
+        if stream_mut.send(Message::text(b)).await.is_err() {
+            return;
+        }
     }
+    stream_mut.send(Message::close(None)).await;
 
-    Ok(())
 }
