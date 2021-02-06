@@ -3,29 +3,26 @@ use hyper::{Body, Request, Response, Uri};
 use hyper::server::conn::{Http, AddrStream};
 
 use http::uri::Authority;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, sync::Mutex};
 
 use futures_util::future::try_join;
 
-use crate::Notifier;
+use crate::{Notifier, db::DB, ca::CA};
 use regex::RegexSet;
 use std::sync::Arc;
 use std::io;
 use crate::uplink::{HTTPClient, make_tcp_con};
-use crate::ca::CA;
-//use crate::db::DB;
 
 use std::error::Error;
 
-async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier) -> Result<Response<Body>, hyper::Error>
+async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
 {
     let _a = broadcast.send(req.uri().to_string()).is_ok();
-    //let db = DB::new();
-
+    
     //store request in DB
     let (parts, body) = req.into_parts();
     let body = hyper::body::to_bytes(body).await?;
-    //let req_id = db.store_req(&parts, &body)?;
+    let req_id = db.lock().await.store_req(&parts, &body);
     let req = Request::from_parts(parts, body.into());
     println!("plain req: {:?}", req);
 
@@ -62,7 +59,15 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier) 
     //store response in DB
     let (parts, body) = rep.into_parts();
     let body = hyper::body::to_bytes(body).await?;
-    //db.store_resp(req_id, &parts, &body)?;
+    match req_id {
+        Ok(req_id) => {
+            if let Err(e) = db.lock().await.store_resp(req_id, &parts, &body) {
+                eprint!("{:?}", e);
+            }
+        },
+        Err(e) => eprint!("{:?}", e)
+    }
+    
     let rep = Response::from_parts(parts, body.into());
     println!("plain rep: {:?}", rep);
 
@@ -70,7 +75,7 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier) 
     Ok(rep)
 }
 
-async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, client: HTTPClient) -> Result<(), Box<dyn Error>> {
+async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, client: HTTPClient, db: Arc<Mutex<DB>>) -> Result<(), Box<dyn Error>> {
     /*
     read first 6 byte and check if it is TLS to
     support other things than HTTPS here
@@ -109,7 +114,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
         };
         *req.uri_mut() = url.build().unwrap();
         let client = client.clone();
-        http_mitm(req, client, broadcast.clone())
+        http_mitm(req, client, broadcast.clone(), db.clone())
     });
     let http = Http::new();
     let conn = http.serve_connection(tls_stream, some_service);
@@ -154,16 +159,17 @@ pub async fn transparent_prxy() -> std::io::Result<()> {
     Ok(())
 }// */
 
-pub async fn process_http_req(req: Request<Body>, broadcast: Notifier, client: HTTPClient) -> Result<Response<Body>, hyper::Error>
+pub async fn process_http_req(req: Request<Body>, broadcast: Notifier, client: HTTPClient, db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
 {
-    http_mitm(req, client, broadcast).await
+    http_mitm(req, client, broadcast, db).await
 }
 pub async fn process_connect_req(
     ca: CA,
     mut req: Request<Body>,
     dont_intercept: Arc<RegexSet>,
     broadcast: Notifier,
-    client: HTTPClient) -> Result<Response<Body>, hyper::Error>
+    client: HTTPClient,
+    db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
 {
     match req.uri().authority(){
         None => {
@@ -187,7 +193,7 @@ pub async fn process_connect_req(
                                 eprintln!("server io error for {}: {}", auth, e);
                             };
                         }else{
-                            if let Err(e) = tls_mitm(ca, tcp_stream, &auth, broadcast, client).await {
+                            if let Err(e) = tls_mitm(ca, tcp_stream, &auth, broadcast, client, db).await {
                                 eprintln!("server error for {}:", auth);
                                 let mut e = &*e;
                                 loop {

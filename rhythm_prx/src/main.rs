@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server};
-use tokio::sync::broadcast;
+use tokio::sync::{Mutex, broadcast};
 
 use regex::RegexSet;
 use std::sync::Arc;
@@ -19,10 +19,10 @@ mod proxy;
 mod server;
 mod uplink;
 mod ca;
-//mod db;
+mod db;
 use uplink::{make_client, HTTPClient};
 use ca::CA;
-//use db::DB;
+use db::DB;
 
 #[derive(Clone)]
 struct Cfg {
@@ -31,7 +31,7 @@ struct Cfg {
     fileserver: Static,
     broadcast: Notifier,
     client: HTTPClient,
-    //db: Arc<DB>
+    db: Arc<Mutex<DB>>
 }
 
 #[tokio::main]
@@ -55,14 +55,25 @@ async fn main() {
         r".+\.docs\.rs(:[0-9]+)?",
     ]).unwrap());
     let client = make_client();
-    //let db = Arc::new(DB::new());
+
+    // Create the TLS acceptor.
+    let db = match DB::new() {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("could not setup a PKI:");
+            //eprintln!("{:?}", e);
+            return;
+        }
+    };
+
+    let db = Arc::new(Mutex::new(db));
     let cfg = Cfg {
         ca,
         dont_intercept,
         fileserver,
         broadcast,
         client,
-        //db
+        db
     };
 
     let make_service = make_service_fn(move |_| {
@@ -94,7 +105,7 @@ async fn proxy(req: Request<Body>, cfg: Cfg)
         // Host: www.domain.com:443
         // Proxy-Connection: Keep-Alive
         // ```
-        proxy::process_connect_req(cfg.ca, req, cfg.dont_intercept, cfg.broadcast, cfg.client).await
+        proxy::process_connect_req(cfg.ca, req, cfg.dont_intercept, cfg.broadcast, cfg.client, cfg.db).await
     } else {
         if req.uri().authority().is_none() {
             //Web UI
@@ -107,6 +118,6 @@ async fn proxy(req: Request<Body>, cfg: Cfg)
         // ```
         // GET www.domain.com:443/ HTTP/1.1
         // Host: www.domain.com:443
-        proxy::process_http_req(req, cfg.broadcast, cfg.client).await
+        proxy::process_http_req(req, cfg.broadcast, cfg.client, cfg.db).await
     }
 }
