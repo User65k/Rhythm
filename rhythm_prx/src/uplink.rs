@@ -9,7 +9,7 @@ TimeoutConnector<HttpsConnector<Uplink>>
 
 use hyper::{service::Service, Uri};
 
-use std::io;
+use std::{collections::HashMap, io};
 use std::{
     future::Future,
     pin::Pin,
@@ -46,12 +46,16 @@ pub struct ProxyEntry {
 
 #[derive(Debug, Clone)]
 pub struct Uplink {
-    proxies: Vec<ProxyEntry>
+    proxies: Vec<ProxyEntry>,
+    hosts: HashMap<String, String>
 }
 
 impl Uplink {
     fn new(proxies: Vec<ProxyEntry>) -> Uplink {
-        Uplink {proxies}
+        Uplink {
+            proxies,
+            hosts: HashMap::new()
+        }
     }
     async fn proxy_to(mut socket: TcpStream, next_addr: TargetAddr<'_>, proxy: &ProxyEntry) -> Result<TcpStream, io::Error> {
         match &proxy.kind {
@@ -109,17 +113,17 @@ impl Uplink {
             }
         }
     }
-    async fn setup_stream(proxies: Vec<ProxyEntry>, uri: Uri) -> Result<TcpStream, io::Error> {
+    async fn setup_stream(proxies: &Vec<ProxyEntry>, hosts: &HashMap<String, String>, uri: Uri) -> Result<TcpStream, io::Error> {
         let l = proxies.len();
 
         if l==0 {
-            let sa = get_endpoint(uri)?
+            let sa = get_endpoint(uri, hosts)?
                 .to_socket_addrs()?
                 .next().ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionAborted, "invalid address"))?;
             return Ok(TcpStream::connect(sa).await?);
         }
 
-        //TODO who does DNS?
+        //TODO who does DNS? (we or target proxy)
         //TODO if there is only one HTTP proxy and we use HTTP (no S) it should be used without CONNECT?
 
         //at least one proxy
@@ -131,7 +135,7 @@ impl Uplink {
                 .map_err(|se|io::Error::new(io::ErrorKind::ConnectionAborted, format!("{}",se)))?;
             last_socket = Uplink::proxy_to(last_socket, target, current).await?;
         }
-        Ok(Uplink::proxy_to(last_socket, get_endpoint(uri)?, proxies.get(l-1).unwrap()).await?) //safe: l>0
+        Ok(Uplink::proxy_to(last_socket, get_endpoint(uri, hosts)?, proxies.get(l-1).unwrap()).await?) //safe: l>0
     }
 }
 
@@ -150,17 +154,27 @@ impl Service<Uri> for Uplink
 
     fn call(&mut self, uri: Uri) -> Self::Future {
         //TODO match uri Foxyproxy style
-        Box::pin(Uplink::setup_stream(self.proxies.clone(), uri))
+        let p = self.proxies.clone();
+        let h = self.hosts.clone();
+        let fut = async move {
+            Uplink::setup_stream(&p, &h, uri).await
+        };
+        Box::pin(fut)
     }
 }
-fn get_endpoint(dst: Uri) -> Result<TargetAddr<'static>,io::Error> {
+
+fn get_endpoint(dst: Uri, hosts: &HashMap<String, String>) -> Result<TargetAddr<'static>,io::Error> {
     let host = match dst.host() {
-        Some(s) => s,
+        Some(s) => {
+            match hosts.get(s) {
+                Some(r) => r,//replace host for different DNS
+                None => s,
+            }
+        },
         None => {
             return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "URI has no host"));
         }
     };
-    //TODO replace host for different DNS
     let port = match dst.port() {
         Some(port) => port.as_u16(),
         None => {
@@ -240,7 +254,8 @@ pub async fn make_tcp_con(uri: Uri) -> Result<TcpStream, io::Error> {
         user: "".to_string(),
         pass: "".to_string()
     });
-    Uplink::setup_stream(proxies.clone(), uri).await
+    let hosts = HashMap::new();
+    Uplink::setup_stream(&proxies, &hosts, uri).await
 }
 
 #[cfg(test)]
@@ -275,7 +290,8 @@ mod tests {
             user: "".to_string(),
             pass: "".to_string()
         });
-        let mut s = Uplink::setup_stream(proxies, uri).await.unwrap();
+        let hosts = HashMap::new();
+        let mut s = Uplink::setup_stream(&proxies, &hosts, uri).await.unwrap();
         s.write(&b"done"[..]).await.unwrap();
     }
     #[tokio::test]
@@ -305,7 +321,8 @@ mod tests {
             user: "".to_string(),
             pass: "".to_string()
         });
-        let mut s = Uplink::setup_stream(proxies, uri).await.unwrap();
+        let hosts = HashMap::new();
+        let mut s = Uplink::setup_stream(&proxies, &hosts, uri).await.unwrap();
         s.write(&b"done"[..]).await.unwrap();
     }
     #[tokio::test]
@@ -321,14 +338,75 @@ mod tests {
 
         let uri = format!("http://{}/foo/bar?baz", addr).parse::<Uri>().unwrap();
         let proxies = Vec::new();
-        let mut s = Uplink::setup_stream(proxies, uri).await.unwrap();
+        let hosts = HashMap::new();
+        let mut s = Uplink::setup_stream(&proxies, &hosts, uri).await.unwrap();
         s.write(&b"done"[..]).await.unwrap();
     }
     #[test]
     fn ipv6() {
         let uri = "http://[::1]:123/foo/bar?baz".parse::<Uri>().unwrap();
-        let mut sa = get_endpoint(uri).unwrap();
-        println!("{:?}", sa);
-        let sa = sa.to_socket_addrs().unwrap();
+        let hosts = HashMap::new();
+        let sa = get_endpoint(uri, &hosts).unwrap();
+        assert_eq!(sa, TargetAddr::Ip(std::net::SocketAddr::new(
+            std::net::IpAddr::V6(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+            123
+        )))
+    }
+    #[test]
+    fn custom_hosts() {
+        let uri = "http://jowhat:123/foo/bar?baz".parse::<Uri>().unwrap();
+        let mut hosts = HashMap::new();
+        hosts.insert("jowhat".to_string(), "[::1]".to_string());
+        let sa = get_endpoint(uri, &hosts).unwrap();
+        assert_eq!(sa, TargetAddr::Ip(std::net::SocketAddr::new(
+            std::net::IpAddr::V6(std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+            123
+        )))
+    }
+    #[tokio::test]
+    async fn proxy_order() {
+        let mut listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buffer = [0; 50];
+            let buf = b"HTTP/1.1 200 bla\r\n\r\n";
+
+            let r = socket.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..r], &b"CONNECT 2nd:2222 HTTP/1.1\r\nHost: 2nd:2222\r\n\r\n"[..]);
+            socket.write(&buf[..]).await.unwrap();
+            let r = socket.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..r], &b"CONNECT 3rd:3333 HTTP/1.1\r\nHost: 3rd:3333\r\n\r\n"[..]);
+            socket.write(&buf[..]).await.unwrap();
+            let r = socket.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..r], &b"CONNECT test:123 HTTP/1.1\r\nHost: test:123\r\n\r\n"[..]);
+            socket.write(&buf[..]).await.unwrap();
+            let r = socket.read(&mut buffer).await.unwrap();
+            assert_eq!(&buffer[..r], &b"done"[..]);
+        });
+
+        let uri = "https://test:123/foo/bar?baz".parse::<Uri>().unwrap();
+        let mut proxies = Vec::new();
+        proxies.push(ProxyEntry{
+            ep: format!("{}", addr),
+            kind: ProxyType::HTTP,
+            user: "".to_string(),
+            pass: "".to_string()
+        });
+        proxies.push(ProxyEntry{
+            ep: "2nd:2222".to_string(),
+            kind: ProxyType::HTTP,
+            user: "".to_string(),
+            pass: "".to_string()
+        });
+        proxies.push(ProxyEntry{
+            ep: "3rd:3333".to_string(),
+            kind: ProxyType::HTTP,
+            user: "".to_string(),
+            pass: "".to_string()
+        });
+        let hosts = HashMap::new();
+        let mut s = Uplink::setup_stream(&proxies, &hosts, uri).await.unwrap();
+        s.write(&b"done"[..]).await.unwrap();
     }
 }

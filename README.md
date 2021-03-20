@@ -22,21 +22,21 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
     - [x] Chainable (Proxychains Style)
     - [ ] with match list (Foxyproxy style)
     - [ ] HTTP without Connect in case of HTTP with a single Proxy
+- [x] Hosts entries in the Proxy (change name resolution)
+- [ ] Transparent Mode (Listen with fake cert @ port + forward it)
+- [ ] Breakpoints (ZAP or HTTPToolkit Style)
+- [ ] Client Certificates
+- [ ] Non HTTP
+
 - [ ] Store Stuff in a Database
 - [ ] strip encodings and gzip
-- [ ] Hosts entries in the Proxy (change name resolution)
-- [ ] Transparent Mode (Listen with fake cert @ port + forward it)
 - [ ] Resend
 - [ ] Alter Requests
   - [ ] Add Cookies from Jar
   - [ ] Update Content-Length
-- [ ] Breakpoints (ZAP Style)
-- [ ] Passive Scanners
-- [ ] Active Scanners
-    - [] rustbuster
-- [ ] Client Certificates
 - [x] Gateway Timeout
 - [ ] HTTP/2
+- [ ] Websockets
 
 - [ ] HTML Gui
     - [ ] Tool Tips for URL / Base64 / XMLEntities
@@ -44,13 +44,17 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
     - [ ] History
     - [ ] Requests / Responses
 
+- [ ] Start proxied App (HTTPToolkit Style)
 - [ ] Start external Application with Parameters from a Request
 - [ ] Exclude from History
 
-- [ ] scan
-  - [ ] vHosts
-  - [ ] dirs
-  - [ ] HTTP Methods
+- [ ] Plugins via [WASI](https://wasi.dev/)
+  - [ ] Passive Scanners
+  - [ ] Active Scanners
+  - [ ] scan - [rustbuster](https://github.com/phra/rustbuster)?
+    - [ ] vHosts
+    - [ ] dirs
+    - [ ] HTTP Methods
 
 ## build
 
