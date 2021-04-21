@@ -3,3 +3,30 @@ name = "rhythm_ui"
 version = "0.1.0"
 authors = ["User65k <15049544+User65k@users.noreply.github.com>"]
 edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2.73"
+js-sys = "0.3.50"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  'Window',
+    "Document", "Element",
+    "NodeList",
+    "IntersectionObserver",'IntersectionObserverInit','IntersectionObserverEntry',
+    "EventTarget", "Event",
+    "BinaryType",  "Blob",  "ErrorEvent",  "FileReader",  "MessageEvent",  "ProgressEvent",  "WebSocket",
+    "Location"
+    ]
+
+[profile.release]
+lto = true
+panic = "abort"
+
+[build-dependencies]
+wasm-bindgen-cli = "0.2.70"
+wasm-pack = "0.9.1"
