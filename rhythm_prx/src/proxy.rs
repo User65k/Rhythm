@@ -79,10 +79,10 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
     /*
     read first 6 byte and check if it is TLS to
     support other things than HTTPS here
-    like HTTP
+    like HTTP (for Websockets)*/
 
-    let mut b1 = [0; 6];
-    let n = tcp_stream.peek(&mut b1).await.expect("what");
+    let mut b1 = [0; 16];
+    let n = tcp_stream.peek(&mut b1).await?;
     /*
     16  //handshake
     3   //v >= SSL 3.0
@@ -91,35 +91,71 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
     ?   //len
     1 //hello
     */
-    println!("io2: {:?}", b1);
-                
-    */
-    let cert = ca.get_cert_for(auth.host()).await?;
-    let tls_acceptor =
-        tokio_native_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
-    let tls_stream = tls_acceptor.accept(tcp_stream).await?;
-
-    let auth_str = auth.as_str();
-
-    let some_service = service_fn(move |mut req|{
-        let url = if let Some(pq) = req.uri().path_and_query() {
-            Uri::builder()
-            .scheme(http::uri::Scheme::HTTPS)
-            .authority(auth_str)
-            .path_and_query(pq.as_str())
-        }else{
-            Uri::builder()
-            .scheme(http::uri::Scheme::HTTPS)
-            .authority(auth_str)
-        };
-        *req.uri_mut() = url.build().unwrap();
-        let client = client.clone();
-        http_mitm(req, client, broadcast.clone(), db.clone())
-    });
-    let http = Http::new();
-    let conn = http.serve_connection(tls_stream, some_service);
+    if (n>1 && b1[0]==0x16 && b1[1] == 0x3) {// */
     
-    Ok(conn.await?)
+        let cert = ca.get_cert_for(auth.host()).await?;
+        let tls_acceptor =
+            tokio_native_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
+        let tls_stream = tls_acceptor.accept(tcp_stream).await?;
+
+        let auth_str = auth.as_str();
+
+        let some_service = service_fn(move |mut req|{
+            let url = if let Some(pq) = req.uri().path_and_query() {
+                Uri::builder()
+                .scheme(http::uri::Scheme::HTTPS)
+                .authority(auth_str)
+                .path_and_query(pq.as_str())
+            }else{
+                Uri::builder()
+                .scheme(http::uri::Scheme::HTTPS)
+                .authority(auth_str)
+            };
+            *req.uri_mut() = url.build().unwrap();
+            let client = client.clone();
+            http_mitm(req, client, broadcast.clone(), db.clone())
+        });
+        let http = Http::new();
+        let conn = http.serve_connection(tls_stream, some_service);
+        
+        return Ok(conn.await?);
+    }
+    let mut try_http = true;//GET / HTTP/1.1
+    let mut x = 0;
+    for b in b1.iter() {
+        if *b == b' ' || x>=n {
+            break;
+        }
+        if b'A'>*b || *b>b'Z' {
+            try_http = false;
+            break;
+        }
+        x += 1;
+    }
+    if (try_http) {
+        let auth_str = auth.as_str();
+
+        let some_service = service_fn(move |mut req|{
+            let url = Uri::builder()
+                .scheme(http::uri::Scheme::HTTP)
+                .authority(auth_str);
+            let url = if let Some(pq) = req.uri().path_and_query() {
+                url.path_and_query(pq.as_str())
+            }else{
+                url
+            };
+            *req.uri_mut() = url.build().unwrap();
+            let client = client.clone();
+            http_mitm(req, client, broadcast.clone(), db.clone())
+        });
+        let http = Http::new();
+        let conn = http.serve_connection(tcp_stream, some_service);
+
+        return Ok(conn.await?);
+    }
+    eprint!("don't know protocoll for {:?}", auth);
+
+    Ok(pass_throught(tcp_stream, auth).await?)
 }
 
 // Create a TCP connection to host:port, build a pass_throught between the connection and
