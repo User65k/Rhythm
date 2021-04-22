@@ -14,6 +14,8 @@ use std::error::Error;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hasher, Hash};
 
 const COUNTRY: &str = "DE";
 const ORG: &str = "Rhythm";
@@ -43,25 +45,24 @@ impl CA{
                 let ca_cert : &[u8] = &ca_cert;
                 let key = KeyPair::try_from(ca_key)?;
                 let params = CertificateParams::from_ca_cert_der(ca_cert, key)?;
+                //check if still valid
+                let c = if params.not_after <= Utc::now() {
+                    //del key
+                    //del cert
+                    CA::gen_and_save_new_ca()?
+                }else{
+                    Certificate::from_params(params)?
+                };
                 Ok(CA {
-                    ca: Arc::new(Certificate::from_params(params)?),
+                    ca: Arc::new(c),
                     hosts: Arc::new(Mutex::new(HashMap::new()))
                 })
             },
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
-                    let cert = CA::make_ca_cert()?;
-
-                    let mut ca_file = OpenOptions::new().write(true).create_new(true).open(CA_CERT)?;
-                    let ca_bytes = cert.serialize_der()?;
-                    ca_file.write_all(&ca_bytes)?;
-
-                    let mut key_file = OpenOptions::new().write(true).create(true).truncate(true).open(CA_KEY)?;
-                    let privkey_bytes = cert.serialize_private_key_der();
-                    key_file.write_all(&privkey_bytes)?;
 
                     Ok(CA {
-                        ca: Arc::new(cert),
+                        ca: Arc::new(CA::gen_and_save_new_ca()?),
                         hosts: Arc::new(Mutex::new(HashMap::new()))
                     })
                 }else{
@@ -69,6 +70,18 @@ impl CA{
                 }
             }
         }
+    }
+    fn gen_and_save_new_ca() -> Result<Certificate, Box<dyn Error>> {
+        let cert = CA::make_ca_cert()?;
+
+        let mut ca_file = OpenOptions::new().write(true).create_new(true).open(CA_CERT)?;
+        let ca_bytes = cert.serialize_der()?;
+        ca_file.write_all(&ca_bytes)?;
+
+        let mut key_file = OpenOptions::new().write(true).create(true).truncate(true).open(CA_KEY)?;
+        let privkey_bytes = cert.serialize_private_key_der();
+        key_file.write_all(&privkey_bytes)?;
+        Ok(cert)
     }
 
     pub async fn get_cert_for(&mut self, host_name: &str) -> Result<Identity, RcgenError>
@@ -106,7 +119,7 @@ impl CA{
             subject_alt_names.push(SanType::DnsName(host_name.to_owned()));
         }
         let mut distinguished_name = DistinguishedName::new();
-        distinguished_name.push(DnType::CountryName, COUNTRY);
+        //distinguished_name.push(DnType::CountryName, COUNTRY);
         distinguished_name.push(DnType::OrganizationName, ORG);
         distinguished_name.push(DnType::CommonName, host_name);
         let mut params = CertificateParams::default();
@@ -115,7 +128,12 @@ impl CA{
         //params.alg = &PKCS_ECDSA_P256_SHA256;
         params.not_before = Utc::today().and_hms(0,0,0);
         params.not_after = params.not_before + Duration::weeks(1);
-        params.serial_number = Some(Utc::now().timestamp_millis() as u64);
+
+        let mut hasher = DefaultHasher::new();
+        host_name.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        params.serial_number = Some(hash & 0xFFFFFFFF_00000000 | Utc::now().timestamp_millis() as u64 & 0x00000000_FFFFFFFF);
         //params.use_authority_key_identifier_extension = true;
         //params.key_identifier_method = KeyIdMethod::Sha512;
         println!("New Cert\tHost: {},\tSN: {}", host_name, params.serial_number.unwrap());
@@ -125,7 +143,7 @@ impl CA{
     fn make_ca_cert() -> Result<Certificate, RcgenError> {
         let mut params = CA::get_params(ORG);
         params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        params.extended_key_usages = vec![ExtendedKeyUsagePurpose::Any];
+        //params.extended_key_usages = vec![ExtendedKeyUsagePurpose::Any]; //https://bugzilla.mozilla.org/show_bug.cgi?id=1049176
         let ca = Certificate::from_params(params)?;
         Ok(ca)
     }
