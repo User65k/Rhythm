@@ -3,7 +3,7 @@ use wasm_bindgen::JsCast;
 
 mod ws;
 mod ctx;
-mod scroll;
+mod list;
 
 type WebRes = Result<(),JsValue>;
 fn unwrap_some<T>(v: Option<T>) -> Result<T,JsValue> {
@@ -27,7 +27,7 @@ pub fn init_ui() {
     let document = window.document().expect("should have a document on window");
 
     if let Err(e) = 
-        scroll::setup_inf_scroll(&document)
+        list::setup(&document)
         .and_then(|_| ctx::setup_ctx_men(&document) )
         .and_then(|_| {
             let loc = document.location().unwrap();
@@ -37,3 +37,23 @@ pub fn init_ui() {
     }
 }
 
+
+/*
+fetch('coffee.jpg')
+.then(response => {
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  } else {
+    return response.blob();
+  }
+})
+.then(myBlob => {
+  let objectURL = URL.createObjectURL(myBlob);
+  let image = document.createElement('img');
+  image.src = objectURL;
+  document.body.appendChild(image);
+})
+.catch(e => {
+  console.log('There has been a problem with your fetch operation: ' + e.message);
+});
+*/
