@@ -2,10 +2,10 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::{log, WebRes};
 
-fn context_menu(e: web_sys::Event) -> WebRes {
-    if let Some(ele) = e.target() {
+fn context_menu(evt: web_sys::Event) -> WebRes {
+    if let Some(ele) = evt.target() {
         let ele = ele.dyn_into::<web_sys::Element>()?;
-        let evnt = e.dyn_into::<web_sys::MouseEvent>()?;
+        let evnt = evt.dyn_into::<web_sys::MouseEvent>()?;
 
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();

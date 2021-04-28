@@ -32,11 +32,11 @@ fn inv_scroll(e: web_sys::Element, obs: &web_sys::IntersectionObserver) -> WebRe
         }
         first.style().set_property("top",&format!("{}em", 1+off))?;
     }
+    log(JsValue::from_str("jo"));
     Ok(())
 }
 
 fn load_scroll(e: web_sys::NodeList, obs: web_sys::IntersectionObserver) {
-    log(JsValue::from_str("jo"));
     let mut x = 0;
     while x < e.length() {
         let n = e.get(x).unwrap().dyn_into::<web_sys::IntersectionObserverEntry>().unwrap();
@@ -66,6 +66,9 @@ pub fn setup_inf_scroll(document: &web_sys::Document) -> WebRes
 
     let ctx_fn = Closure::wrap(Box::new(move |e: web_sys::Event| {
         //TODO
+        if let Err(e) = fix_scroll(e) {
+            log(e);
+        }
     }) as Box<dyn Fn(web_sys::Event)>);
     list_root.unwrap().add_event_listener_with_callback_and_add_event_listener_options(
         "scroll",
@@ -73,5 +76,29 @@ pub fn setup_inf_scroll(document: &web_sys::Document) -> WebRes
         web_sys::AddEventListenerOptions::new().passive(true)
     )?;
     ctx_fn.forget();
+    Ok(())
+}
+fn fix_scroll(e: web_sys::Event) -> WebRes {
+    if let Some(ele) = e.target() {
+        let e = ele.dyn_into::<web_sys::HtmlElement>()?;
+        let pos = e.scroll_top();
+        let (first, last) = (e.first_element_child().unwrap(), e.last_element_child().unwrap());
+        let first = first.dyn_into::<web_sys::HtmlElement>()?;
+        let last = last.dyn_into::<web_sys::HtmlElement>()?;
+
+        log(JsValue::from_str(&format!("scroll {} < {} < {}",
+            first.offset_top(),
+            pos,
+            last.offset_top()+last.offset_height()-e.offset_height()
+        )));
+
+        if pos < first.offset_top()-last.offset_height() {
+            //scrolled past top element
+            log(JsValue::from_str("prev all"));
+        }else if pos + e.offset_height() > last.offset_top()+2*last.offset_height() {
+            //scrolled past last element
+            log(JsValue::from_str("past all"));
+        }
+    }
     Ok(())
 }
