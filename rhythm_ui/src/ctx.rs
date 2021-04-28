@@ -1,18 +1,20 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::log;
+use crate::{log, WebRes};
 
-fn context_menu(e: web_sys::EventTarget) {
-    if let Ok(ele) = e.dyn_into::<web_sys::Element>() {
-        let window = web_sys::window().expect("no global `window` exists");
-        let document = window.document().expect("should have a document on window");
-        let menu = document.query_selector("#menu")
-            .unwrap().unwrap()
-            .dyn_into::<web_sys::HtmlElement>().unwrap();
+fn context_menu(e: web_sys::Event) -> WebRes {
+    if let Some(ele) = e.target() {
+        let ele = ele.dyn_into::<web_sys::Element>()?;
+        let evnt = e.dyn_into::<web_sys::MouseEvent>()?;
+
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let menu = document.query_selector("#menu")?.unwrap()
+            .dyn_into::<web_sys::HtmlElement>()?;
         
-        menu.style().set_property("left", &format!("{}px",ele.client_left()));
-        menu.style().set_property("top", &format!("{}px",ele.client_top()));
-        menu.style().set_property("display", "");
+        menu.style().set_property("left", &format!("{}px", evnt.client_x()))?;
+        menu.style().set_property("top", &format!("{}px", evnt.client_y()))?;
+        menu.style().set_property("display", "")?;
         log(ele.into());
 
         let ctx_fn = Closure::wrap(Box::new(move |e: web_sys::Event| {
@@ -22,26 +24,29 @@ fn context_menu(e: web_sys::EventTarget) {
             "click",
             ctx_fn.as_ref().unchecked_ref(),
             web_sys::AddEventListenerOptions::new().once(true)
-        );
+        )?;
         ctx_fn.forget();
     }
+    Ok(())
 }
-pub fn setup_ctx_men(document: &web_sys::Document)
+pub fn setup_ctx_men(document: &web_sys::Document) -> WebRes
 {
     let ctx_fn = Closure::wrap(Box::new(move |e: web_sys::Event| {
-        context_menu(e.target().unwrap());
         e.prevent_default();
-    }) as Box<dyn Fn(web_sys::Event)>);
-    if let Ok(nodes) = document.query_selector_all(".ilist tbody tr") {
-        let mut x = 0;
-        while x < nodes.length() {
-            let n = nodes.get(x).unwrap();
-            n.add_event_listener_with_callback(
-                "contextmenu",
-                ctx_fn.as_ref().unchecked_ref()
-            );
-            x+= 1;
+        if let Err(e) = context_menu(e) {
+            log(e);
         }
+    }) as Box<dyn Fn(web_sys::Event)>);
+    let nodes = document.query_selector_all(".ilist tbody tr")?;
+    let mut x = 0;
+    while x < nodes.length() {
+        let n = nodes.get(x).unwrap();
+        n.add_event_listener_with_callback(
+            "contextmenu",
+            ctx_fn.as_ref().unchecked_ref()
+        )?;
+        x+= 1;
     }
     ctx_fn.forget();
+    Ok(())
 }

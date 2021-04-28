@@ -62,4 +62,6 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
 ```
 sudo apt install pkg-config libssl-dev
 cargo build -p rhythm_prx
+
+wasm-pack build --target web
 ```

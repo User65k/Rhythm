@@ -18,7 +18,7 @@ features = [
     "Document", "Element", "HtmlElement",
     "NodeList",
     "IntersectionObserver",'IntersectionObserverInit','IntersectionObserverEntry',
-    "EventTarget", "Event", "AddEventListenerOptions",
+    "EventTarget", "Event", "AddEventListenerOptions", "MouseEvent",
     "BinaryType",  "Blob",  "ErrorEvent",  "FileReader",  "MessageEvent",  "ProgressEvent",  "WebSocket",
     "Location",
     "CssStyleDeclaration"
