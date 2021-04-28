@@ -7,7 +7,10 @@ use websocket_codec::{ClientRequest, MessageCodec, Message, Opcode};
 
 use crate::Notifier;
 pub type AsyncClient = Framed<hyper::upgrade::Upgraded, MessageCodec>;
-
+use serde::{Deserialize, Deserializer, de::Error as SerdeErr};
+use std::str::FromStr;
+use std::fmt::Display;
+use rhythm_proto::APICall;
 
 pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Notifier) -> Result<Response<Body>, hyper::Error> {
     match req.uri().path() {
@@ -52,7 +55,10 @@ pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Not
         },
         "/favicon.ico" | "/main.js" | "/main.wasm" | "/index.html" | "/style.css" => {
             match fileserver.serve(req).await {
-                Ok(r) => Ok(r),
+                Ok(mut r) => {
+                    r.headers_mut().insert(header::CACHE_CONTROL, hyper::header::HeaderValue::from_static("no-cache"));
+                    Ok(r)
+                },
                 Err(e) => {
                     eprintln!("server io error: {}", e);
                     let mut resp = Response::new(Body::empty());
@@ -61,12 +67,47 @@ pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Not
                 }
             }
         },
+        "/api" => {
+            api(req, broadcast).await.or_else(|(c,s)|{
+                let mut resp = Response::new(Body::from(s));
+                *resp.status_mut() = c;
+                Ok(resp)
+            })
+        },
         _ => {
             let mut resp = Response::new(Body::empty());
-            *resp.status_mut() = hyper::StatusCode::FORBIDDEN;
-            Ok(resp)    
+            *resp.status_mut() = hyper::StatusCode::NOT_FOUND;
+            Ok(resp)
         }
     }
+}
+
+async fn api(req: Request<Body>, broadcast: Notifier) -> Result<Response<Body>,(hyper::StatusCode, String)> {
+    let op = if let Some(q) = req.uri().query(){
+        match serde_urlencoded::from_str::<APICall>(q) {
+            Ok(op) => op,
+            Err(e) => {
+                return Err((hyper::StatusCode::BAD_REQUEST, e.to_string()));
+            }
+        }
+    }else{
+        return Err((hyper::StatusCode::BAD_REQUEST, "no query".to_string()));
+    };
+    println!("API call: {:?}", op);
+    
+
+    //200 OK
+    let mut resp = Response::new(Body::empty());
+
+    match op {
+        APICall::Brief{id} => {
+            //ID 	Time 	Method 	Host 	        Path 	Code+Reason 	RTT 	Size 	Tags
+            *resp.body_mut() = Body::from("[0,0,\"GET\",\"example.com\",\"???\",200,1,2000,[]]");
+        },
+        _ => {}
+    }
+
+    Ok(resp)
 }
 
 async fn websocket(mut stream_mut: AsyncClient, broadcast: Notifier) {
@@ -75,7 +116,7 @@ async fn websocket(mut stream_mut: AsyncClient, broadcast: Notifier) {
     let mut rx = broadcast.subscribe();
 
     while let Ok(b) = rx.recv().await {
-        if stream_mut.send(Message::text(b)).await.is_err() {
+        if stream_mut.send(Message::binary(b)).await.is_err() {
             return;
         }
     }

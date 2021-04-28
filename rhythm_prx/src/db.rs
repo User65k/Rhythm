@@ -1,11 +1,12 @@
 use sled::{Db, Error as SledErr, IVec};
 use std::{collections::HashMap, convert::TryInto, path::Path};
-use hyper::{http::request, http::response, body::Bytes, Error as HyperErr};
 use std::error::Error;
-use hyper::{Method, Version, StatusCode};
 use std::convert::From;
-use flexbuffers::{FlexbufferSerializer, SerializationError};
-use serde::{Deserialize, Serialize};
+use flexbuffers::SerializationError;
+use rhythm_proto::{Request, Response};
+use hyper::{http::request, http::response, body::Bytes};
+
+
 #[derive(Debug)]
 pub enum DBErr {
     Sled(SledErr),
@@ -23,74 +24,6 @@ impl From<SerializationError> for DBErr {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Request {
-    pub method: String,
-    pub uri: String,
-    pub version: u8,
-    pub headers: HashMap<String, Vec<u8>>,
-}
-#[derive(Serialize, Deserialize, Debug)]
-struct Response {
-    pub status: u16,
-    /// The response's version
-    pub version: u8,
-    /// The response's headers
-    pub headers: HashMap<String, Vec<u8>>,
-}
-
-impl From<&request::Parts> for Request {
-    #[inline]
-    fn from(parts: &request::Parts) -> Self {
-        let version = vers_to_index(parts.version);
-        let mut headers: HashMap<String, Vec<u8>> = HashMap::new();
-        for (k,v) in parts.headers.iter() {
-            headers.insert(k.to_string(), v.as_bytes().into());
-        }
-        Request {
-            version, 
-            uri: parts.uri.to_string(),
-            method: parts.method.to_string(),
-            headers
-        }
-    }
-}
-impl From<&response::Parts> for Response {
-    #[inline]
-    fn from(parts: &response::Parts) -> Self {
-        let version = vers_to_index(parts.version);
-        let mut headers: HashMap<String, Vec<u8>> = HashMap::new();
-        for (k,v) in parts.headers.iter() {
-            headers.insert(k.to_string(), v.as_bytes().into());
-        }
-        Response {
-            status: parts.status.as_u16(),
-            version,
-            headers
-        }
-    }
-}
-impl TryInto<IVec> for Request {
-    fn try_into(self) -> Result<IVec, SerializationError> {
-        
-        let mut s = flexbuffers::FlexbufferSerializer::new();
-        self.serialize(&mut s)?;
-        
-        Ok(s.view().into())
-    }
-
-    type Error = SerializationError;
-}
-impl TryInto<IVec> for Response {
-    fn try_into(self) -> Result<IVec, SerializationError> {
-        
-        let mut s = flexbuffers::FlexbufferSerializer::new();
-        self.serialize(&mut s)?;
-        
-        Ok(s.view().into())
-    }
-    type Error = SerializationError;
-}
 
 pub struct DB {
     db: Db
@@ -142,14 +75,3 @@ impl DB {
     }
 }
 
-#[inline]
-fn vers_to_index(version: Version) -> u8 {
-    match version {
-        Version::HTTP_09 => 9,
-        Version::HTTP_10 => 10,
-        Version::HTTP_11 => 11,
-        Version::HTTP_2 => 2,
-        Version::HTTP_3 => 3,
-        _ => 0
-    }
-}

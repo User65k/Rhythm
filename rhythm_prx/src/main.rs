@@ -13,7 +13,7 @@ use std::sync::Arc;
 use hyper_staticfile::Static;
 use std::path::Path;
 
-type Notifier = broadcast::Sender<String>;
+type Notifier = broadcast::Sender<Vec<u8>>;
 
 mod proxy;
 mod server;

@@ -8,6 +8,7 @@ edition = "2018"
 crate-type = ["cdylib"]
 
 [dependencies]
+rhythm_proto = {path = "../rhythm_proto"}
 wasm-bindgen = "0.2.73"
 js-sys = "0.3.50"
 
@@ -16,12 +17,13 @@ version = "0.3"
 features = [
   'Window',
     "Document", "Element", "HtmlElement",
-    "NodeList",
+    "NodeList", "HtmlCollection",
     "IntersectionObserver",'IntersectionObserverInit','IntersectionObserverEntry',
     "EventTarget", "Event", "AddEventListenerOptions", "MouseEvent",
     "BinaryType",  "Blob",  "ErrorEvent",  "FileReader",  "MessageEvent",  "ProgressEvent",  "WebSocket",
     "Location",
-    "CssStyleDeclaration"
+    "CssStyleDeclaration",
+    "Response"
     ]
 
 [build]

@@ -14,17 +14,36 @@ use std::io;
 use crate::uplink::{HTTPClient, make_tcp_con};
 
 use std::error::Error;
+use rhythm_proto::WSNotify;
 
 async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
 {
-    let _a = broadcast.send(req.uri().to_string()).is_ok();
+    //let _a = broadcast.send(req.uri().to_string()).is_ok();
     
     //store request in DB
-    let (parts, body) = req.into_parts();
+    let (req_parts, body) = req.into_parts();
     let body = hyper::body::to_bytes(body).await?;
-    let req_id = db.lock().await.store_req(&parts, &body);
-    let req = Request::from_parts(parts, body.into());
-    println!("plain req: {:?}", req);
+    let req_id = db.lock().await.store_req(&req_parts, &body);
+    
+    if let Ok(id) = &req_id {
+        let i = WSNotify::NewReq {
+            id: *id,
+            method: req_parts.method.to_string(),
+            uri: req_parts.uri.to_string()
+        };
+        if let Ok(b) = i.as_u8() {
+            let _a = broadcast.send(b).is_ok();
+        }
+    }
+    
+    let mut req = Request::builder()
+        .method(req_parts.method.clone())
+        .uri(req_parts.uri.clone())
+        .version(req_parts.version)
+        .body(body.into()).unwrap();
+    *req.headers_mut() = req_parts.headers.clone();
+    //let req = Request::from_parts(req_parts, body.into());
+    println!("plain req: {:?}", req.uri());
 
     //TODO break + alter
 
@@ -58,21 +77,83 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
 
     //store response in DB
     let (parts, body) = rep.into_parts();
+
+    if parts.status == hyper::StatusCode::SWITCHING_PROTOCOLS {
+        return upgrade_proxy_req(parts, req_parts, req_id).await;
+    }
+
     let body = hyper::body::to_bytes(body).await?;
     match req_id {
         Ok(req_id) => {
             if let Err(e) = db.lock().await.store_resp(req_id, &parts, &body) {
                 eprint!("{:?}", e);
             }
+
+            let i = WSNotify::NewResp {
+                id: req_id,
+                status: parts.status.as_u16()
+            };
+            if let Ok(b) = i.as_u8() {
+                let _a = broadcast.send(b).is_ok();
+            }
         },
         Err(e) => eprint!("{:?}", e)
     }
-    
+
     let rep = Response::from_parts(parts, body.into());
-    println!("plain rep: {:?}", rep);
+    println!("plain rep: {:?}", rep.status());
 
     //return response to browser
     Ok(rep)
+}
+
+async fn upgrade_proxy_req(resp: hyper::http::response::Parts,
+                            req: hyper::http::request::Parts,
+                            req_id: Result<u64,crate::db::DBErr>)
+    -> Result<Response<Body>, hyper::Error>
+{
+    
+    let mut rep2ret = Response::builder()
+        .status(resp.status)
+        .version(resp.version).body(Body::empty()).unwrap();
+    *rep2ret.headers_mut() = resp.headers.clone();
+    
+    let rep = Response::from_parts(resp, Body::empty());
+    let mut req = Request::from_parts(req, Body::empty());
+    //consume server aw
+    match hyper::upgrade::on(rep).await {
+        Ok(server) => {
+            tokio::task::spawn(async move {
+                match hyper::upgrade::on(&mut req).await {
+                    Ok(client) => {
+                        println!("client upgr");
+
+                        let _amounts = {
+                            let (mut server_rd, mut server_wr) = tokio::io::split(server);
+                            let (mut client_rd, mut client_wr) = tokio::io::split(client);
+
+                            let client_to_server = tokio::io::copy(&mut client_rd, &mut server_wr);
+                            let server_to_client = tokio::io::copy(&mut server_rd, &mut client_wr);
+
+                            try_join(client_to_server, server_to_client).await
+                        };
+                    },
+                    Err(e) => eprintln!("Error client upgrade {}",e),
+                    //Error client upgrade upgrade expected but low level API in use
+                }
+            });
+            println!("plain rep 2upgr: {:?}", rep2ret.status());
+
+            Ok(rep2ret)
+        },
+        Err(err) => {
+            eprintln!("Error server upgrade {}",err);
+            let e = format!("<html><body><h1>Rhythm</h1>Upgrade {}</body></html>",err);
+            let mut resp = Response::new(Body::from(e));
+            *resp.status_mut() = hyper::StatusCode::BAD_GATEWAY;
+            Ok(resp)
+        },
+    }
 }
 
 async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, client: HTTPClient, db: Arc<Mutex<DB>>) -> Result<(), Box<dyn Error>> {
@@ -118,7 +199,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
         let http = Http::new();
         let conn = http.serve_connection(tls_stream, some_service);
         
-        return Ok(conn.await?);
+        return Ok(conn.with_upgrades().await?);
     }
     let mut try_http = true;//GET / HTTP/1.1
     let mut x = 0;
@@ -151,7 +232,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
         let http = Http::new();
         let conn = http.serve_connection(tcp_stream, some_service);
 
-        return Ok(conn.await?);
+        return Ok(conn.with_upgrades().await?);
     }
     eprint!("don't know protocoll for {:?}", auth);
 

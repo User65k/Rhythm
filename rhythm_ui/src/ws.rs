@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::log;
+use rhythm_proto::WSNotify;
 
 pub fn start_websocket(loc: web_sys::Location) -> Result<(), JsValue> {
 
@@ -40,7 +41,8 @@ fn on_msg(e: web_sys::MessageEvent) {
         log(JsValue::from_str("message event, received arraybuffer"));
         let array = js_sys::Uint8Array::new(&abuf);
         //let len = array.byte_length() as usize;
-        log(array.into());
+        let todo = WSNotify::parse(&array.to_vec());
+        log(format!("server says: {:?}",todo).into());
         /*
     } else if let Ok(blob) = e.data().dyn_into::<js_sys::Blob>() {
         console_log!("message event, received blob: {:?}", blob);

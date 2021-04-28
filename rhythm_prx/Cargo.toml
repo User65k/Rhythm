@@ -7,9 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rhythm_proto = {path = "../rhythm_proto"}
 hyper = { version = "0.14", features = ["http1", "http2", "server"]}
 tokio = { version = "1.0", default-features = false, features = ["net", "macros", "rt", "sync", "rt-multi-thread"] }
-futures-util = { version = "0.3", default-features = false, features = ["async-await", "sink"]}
+futures-util = { version = "0.3", default-features = false, features = ["async-await"]}
 http = "0.2.3"
 
 #serde_json = "^1.0.39"
@@ -31,8 +32,8 @@ hyper-timeout = "0.4"
 hyper-staticfile = "0.6"
 tokio-util = { version = "0.6", features=["codec"] }
 websocket-codec = "0.5"
-#websocket-lite = "0.5"
-#serde_urlencoded = "0.6.1"
+websocket-lite = "0.5"
+serde_urlencoded = "0.7"
 #percent-encoding = "2.1"
 #cookie_crate = { version = "0.14", package = "cookie", optional = true }
 #cookie_store = { version = "0.12", optional = true }
