@@ -23,7 +23,8 @@ features = [
     "BinaryType",  "Blob",  "ErrorEvent",  "FileReader",  "MessageEvent",  "ProgressEvent",  "WebSocket",
     "Location",
     "CssStyleDeclaration",
-    "Response"
+    "Response",
+    "Url"
     ]
 
 [build]

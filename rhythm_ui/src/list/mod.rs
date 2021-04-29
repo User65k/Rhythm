@@ -1,34 +1,86 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::{log, WebRes};
+use crate::{log, WebRes, get_document_ref};
+use web_sys::{Url, Element, Document, window, Response, HtmlElement};
 
 mod scroll;
 
-pub fn setup(document: &web_sys::Document) -> WebRes
-{
-    let window = web_sys::window().expect("no global `window` exists");
+static mut LIST_ELE: Option<Element> = None;
 
-    let cbJ = Closure::wrap(Box::new(move |a: JsValue| {
+fn get_list_ref() -> &'static Element {
+    unsafe {
+        LIST_ELE.as_ref().expect("No list root")
+    }
+}
+
+pub fn setup(document: &Document) -> WebRes
+{
+    let window = window().expect("no global `window` exists");
+
+    let cb_j = Closure::wrap(Box::new(move |a: JsValue| {
         let a = a.dyn_into::<js_sys::Array>().unwrap();
-        log(a.get(2));
+        log(a.get(3));
     }) as Box<dyn FnMut(JsValue)>);
     let cb = Closure::wrap(Box::new(move |a: JsValue| {
-        let a = a.dyn_into::<web_sys::Response>().unwrap();
+        let a = a.dyn_into::<Response>().unwrap();
         if !a.ok() {
             log("http err".into());
             return;
         }
         match a.json() {
-            Ok(a) => {a.then(&cbJ);},
+            Ok(a) => {a.then(&cb_j);},
             Err(a) => log(a),
         };        
     }) as Box<dyn FnMut(JsValue)>);
     window.fetch_with_str("/api?op=Brief&id=1").then(&cb);
     cb.forget();
 
-    //if len > 20
-    //element.child_element_count(&self) -> u32
-    scroll::setup_inf_scroll(document)
+    unsafe {
+        LIST_ELE = document.query_selector(".ilist tbody")?;
+    }
+    Ok(())
+}
+pub fn new_item(id: u64, method: String, uri: String) -> WebRes {
+    log(format!("new req {} {} {}", &id, &method, &uri).into());
+    let list = get_list_ref();
+    let list_elements = list.child_element_count();
+    if list_elements > 19 {
+        //recycle old rows
+        //TODO check if auto scroll is on
+        Ok(())
+    }else{
+        //add new rows
+        let doc = get_document_ref();
+        let row = create_row(doc)?;
+        clear_row(&row)?;
+        let c = row.children();
+        let cid   = c.item(0).unwrap().dyn_into::<HtmlElement>()?;
+        let meth = c.item(2).unwrap().dyn_into::<HtmlElement>()?;
+        let host = c.item(3).unwrap().dyn_into::<HtmlElement>()?;
+        let path = c.item(4).unwrap().dyn_into::<HtmlElement>()?;
+        cid.set_inner_text(&format!("{}",id));
+        meth.set_inner_text(&method);
+
+        let uri = Url::new(&uri)?;
+
+        host.set_inner_text(&uri.origin());
+        path.set_inner_text(&uri.pathname());
+        
+        let row = row.dyn_into::<HtmlElement>()?;
+        if list_elements == 0 {
+            row.style().set_property("top","0px")?;
+        }else{
+            row.style().set_property("top",&format!("{}em", list_elements))?;
+        }        
+
+        list.append_with_node_1(&row)?;
+        //time to setup infinit scrolling?
+        if list_elements > 19 {
+            scroll::setup_inf_scroll(list)
+        }else{
+            Ok(())
+        }
+    }
 }
 
 fn create_row(document: &web_sys::Document) -> Result<web_sys::Element, JsValue> {

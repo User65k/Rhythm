@@ -36,6 +36,7 @@ struct Cfg {
 
 #[tokio::main]
 async fn main() {
+    pretty_env_logger::init();
     let fileserver = Static::new(Path::new("./"));
     let (broadcast, _rx) = broadcast::channel(1);
 

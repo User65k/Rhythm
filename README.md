@@ -38,7 +38,7 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
 - [ ] HTTP/2
 - [ ] Websockets
 
-- [ ] HTML Gui
+- [x] [WASM](https://webassembly.org/) Gui
     - [ ] Tool Tips for URL / Base64 / XMLEntities
     - [ ] Page Map
     - [ ] History

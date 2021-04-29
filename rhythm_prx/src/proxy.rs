@@ -15,6 +15,7 @@ use crate::uplink::{HTTPClient, make_tcp_con};
 
 use std::error::Error;
 use rhythm_proto::WSNotify;
+use log::{info, error, debug};
 
 async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
 {
@@ -43,7 +44,7 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
         .body(body.into()).unwrap();
     *req.headers_mut() = req_parts.headers.clone();
     //let req = Request::from_parts(req_parts, body.into());
-    println!("plain req: {:?}", req.uri());
+    info!("plain req: {:?}", req.uri());
 
     //TODO break + alter
 
@@ -61,9 +62,9 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
             }
             let mut e: &dyn Error = &*cause;
             loop {
-                eprintln!("{}", e);
+                error!("{}", e);
                 e = match e.source() {
-                    Some(e) => {eprintln!("caused by:");e},
+                    Some(e) => {error!("caused by:");e},
                     None => break,
                 }
             }
@@ -86,7 +87,7 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
     match req_id {
         Ok(req_id) => {
             if let Err(e) = db.lock().await.store_resp(req_id, &parts, &body) {
-                eprint!("{:?}", e);
+                error!("{:?}", e);
             }
 
             let i = WSNotify::NewResp {
@@ -97,11 +98,11 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
                 let _a = broadcast.send(b).is_ok();
             }
         },
-        Err(e) => eprint!("{:?}", e)
+        Err(e) => error!("{:?}", e)
     }
 
     let rep = Response::from_parts(parts, body.into());
-    println!("plain rep: {:?}", rep.status());
+    info!("plain rep: {:?}", rep.status());
 
     //return response to browser
     Ok(rep)
@@ -126,7 +127,7 @@ async fn upgrade_proxy_req(resp: hyper::http::response::Parts,
             tokio::task::spawn(async move {
                 match hyper::upgrade::on(&mut req).await {
                     Ok(client) => {
-                        println!("client upgr");
+                        info!("client upgrade");
 
                         let _amounts = {
                             let (mut server_rd, mut server_wr) = tokio::io::split(server);
@@ -138,7 +139,7 @@ async fn upgrade_proxy_req(resp: hyper::http::response::Parts,
                             try_join(client_to_server, server_to_client).await
                         };
                     },
-                    Err(e) => eprintln!("Error client upgrade {}",e),
+                    Err(e) => error!("Error client upgrade {}",e),
                     //Error client upgrade upgrade expected but low level API in use
                 }
             });
@@ -147,7 +148,7 @@ async fn upgrade_proxy_req(resp: hyper::http::response::Parts,
             Ok(rep2ret)
         },
         Err(err) => {
-            eprintln!("Error server upgrade {}",err);
+            error!("Error server upgrade {}",err);
             let e = format!("<html><body><h1>Rhythm</h1>Upgrade {}</body></html>",err);
             let mut resp = Response::new(Body::from(e));
             *resp.status_mut() = hyper::StatusCode::BAD_GATEWAY;
@@ -167,18 +168,19 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
     /*
     16  //handshake
     3   //v >= SSL 3.0
-    ?   // exact version
+    ?   // exact version 1 == TLS1.0+
     ?   // len
     ?   //len
-    1 //hello
+    1 //client hello
     */
-    if (n>1 && b1[0]==0x16 && b1[1] == 0x3) {// */
+    if (n>1 && b1[0]==0x16 && b1[1] == 0x3) {//TLS1.0, TLS1.1, TLS1.2, TLS1.3
     
         let cert = ca.get_cert_for(auth.host()).await?;
         let tls_acceptor =
             tokio_native_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
         let tls_stream = tls_acceptor.accept(tcp_stream).await?;
 
+        //TODO check for protocoll (everything but TLS) again
         let auth_str = auth.as_str();
 
         let some_service = service_fn(move |mut req|{
@@ -201,7 +203,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
         
         return Ok(conn.with_upgrades().await?);
     }
-    let mut try_http = true;//GET / HTTP/1.1
+    let mut try_http = true;//OPTIONS / HTTP/1.1  ~9 ALPHA, URL, HTTP/N.N
     let mut x = 0;
     for b in b1.iter() {
         if *b == b' ' || x>=n {
@@ -213,7 +215,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
         }
         x += 1;
     }
-    if (try_http) {
+    if (try_http) { //HTTP1.x
         let auth_str = auth.as_str();
 
         let some_service = service_fn(move |mut req|{
@@ -234,7 +236,9 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
 
         return Ok(conn.with_upgrades().await?);
     }
-    eprint!("don't know protocoll for {:?}", auth);
+    //HTTP2 should only be used in TLS, so dont care about it here
+
+    error!("don't know protocoll for {:?}, starts with {:?}", auth, b1);
 
     Ok(pass_throught(tcp_stream, auth).await?)
 }
@@ -290,12 +294,13 @@ pub async fn process_connect_req(
 {
     match req.uri().authority(){
         None => {
-            eprintln!("CONNECT must contain an endpoint to connect to: {:?}", req.uri());
+            error!("CONNECT must contain an endpoint to connect to: {:?}", req.uri());
             let mut resp = Response::new(Body::from("CONNECT must contain an endpoint to connect to"));
             *resp.status_mut() = hyper::StatusCode::BAD_REQUEST;
             Ok(resp)
         },
         Some(a) => {
+            debug!("Connection request for {}", a.as_str());
             let auth = a.clone();
 
             tokio::task::spawn(async move {
@@ -307,14 +312,14 @@ pub async fn process_connect_req(
 
                         if dont_intercept.is_match(auth.as_str()) {
                             if let Err(e) = pass_throught(tcp_stream, &auth).await {
-                                eprintln!("server io error for {}: {}", auth, e);
+                                error!("server io error for {}: {}", auth, e);
                             };
                         }else{
                             if let Err(e) = tls_mitm(ca, tcp_stream, &auth, broadcast, client, db).await {
-                                eprintln!("server error for {}:", auth);
+                                error!("server error for {}:", auth);
                                 let mut e = &*e;
                                 loop {
-                                    eprintln!("\t{}", e);
+                                    error!("\t{}", e);
                                     e = match e.source() {
                                         Some(e) => e,
                                         None => break,
@@ -324,7 +329,7 @@ pub async fn process_connect_req(
                             };
                         }
                     },
-                    Err(e) => eprintln!("upgrade error: {}", e),  //TODO forward the error to the UI
+                    Err(e) => error!("upgrade error: {}", e),  //TODO forward the error to the UI
                 }
             });
             Ok(Response::new(Body::empty()))

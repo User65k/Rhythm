@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
+use web_sys::{Document, window};
 
 mod ws;
 mod ctx;
@@ -18,22 +18,48 @@ fn unwrap_some<T>(v: Option<T>) -> Result<T,JsValue> {
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: JsValue);
+    #[wasm_bindgen(js_namespace = console, js_name = error)]
+    fn error(s: JsValue);
+    #[wasm_bindgen(js_namespace = console, js_name = error)]
+    fn error2(s: JsValue, s2: JsValue);
+}
+
+static mut DOCUMENT: Option<Document> = None;
+
+fn get_document_ref() -> &'static Document {
+    unsafe {
+      DOCUMENT.as_ref().expect("No document root")
+    }
+}
+fn show_error(err: &str) {
+  //TODO show Toast
+  //and log to the console
+  error(JsValue::from_str(err));
+}
+fn show_error_w_val(err: &str, js_err: JsValue) {
+  //TODO show Toast
+  //and log to the console
+  error2(JsValue::from_str(err), js_err);
 }
 
 //#[wasm_bindgen(start)]
 #[wasm_bindgen]
 pub fn init_ui() {
-    let window = web_sys::window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
+    let window = window().expect("no global `window` exists");
+    let document = window.document();
+    unsafe {
+      DOCUMENT = document;
+    }
+    let document = get_document_ref();
 
     if let Err(e) = 
-        list::setup(&document)
-        .and_then(|_| ctx::setup_ctx_men(&document) )
+        list::setup(document)
+        .and_then(|_| ctx::setup_ctx_men(document) )
         .and_then(|_| {
             let loc = document.location().unwrap();
             ws::start_websocket(loc)
         }) {
-        log(e);
+          show_error_w_val("could not initialize", e);
     }
 }
 
