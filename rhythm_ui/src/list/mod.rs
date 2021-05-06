@@ -1,16 +1,59 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::{log, WebRes, get_document_ref};
+use crate::{log, WebRes, get_document_ref, ctx::add_ctx_men};
 use web_sys::{Url, Element, Document, window, Response, HtmlElement};
 
 mod scroll;
 
-static mut LIST_ELE: Option<Element> = None;
+static mut LIST_ELE: Option<HtmlElement> = None;
+static mut SCROL_ELE: Option<HtmlElement> = None;
+static mut ITEM_HIGHT: Option<i32> = None;
+static mut TOP_SPACER: Option<HtmlElement> = None;
+static mut BOTTOM_SPACER: Option<HtmlElement> = None;
 
-fn get_list_ref() -> &'static Element {
+/// return the list / parent of the rows. (Is a tbody)
+fn get_list_ref() -> &'static HtmlElement {
     unsafe {
         LIST_ELE.as_ref().expect("No list root")
     }
+}
+/// return the element that scrolls the list. (Is a div)
+fn get_scroll_ref() -> &'static HtmlElement {
+    unsafe {
+        SCROL_ELE.as_ref().expect("No scroll ele")
+    }
+}
+/// return the hight in px of a single row (tr) in the list
+fn get_item_hight() -> i32 {
+    match unsafe {ITEM_HIGHT} {
+        Some(h) => h,
+        None => {
+            let list = get_list_ref();
+            let first_row = list.first_element_child().unwrap();
+            let row = first_row.next_element_sibling().unwrap();
+            let td = row.first_element_child().unwrap();
+            let td = td.dyn_into::<HtmlElement>().unwrap();
+            let h = td.offset_height();
+            unsafe {ITEM_HIGHT = Some(h);}
+            h
+        }
+    }
+}
+fn get_list_top_spacer() -> &'static HtmlElement {
+    unsafe {
+        TOP_SPACER.as_ref().expect("No list root")
+    }
+}
+fn get_list_bottom_spacer() -> &'static HtmlElement {
+    unsafe {
+        BOTTOM_SPACER.as_ref().expect("No list root")
+    }
+}
+fn adjust_spacer_h(element: &HtmlElement, h: i32) -> WebRes
+{
+    element.style().set_property("height",
+        &format!("{}px",
+            (h*get_item_hight())+element.offset_height()))
 }
 
 pub fn setup(document: &Document) -> WebRes
@@ -36,53 +79,91 @@ pub fn setup(document: &Document) -> WebRes
     cb.forget();
 
     unsafe {
-        LIST_ELE = document.query_selector(".ilist tbody")?;
+        LIST_ELE =  document.query_selector(".ilist tbody")?.and_then(|oe|{
+            oe.dyn_into::<HtmlElement>().ok()
+        });
+        SCROL_ELE = LIST_ELE.as_ref()
+            .and_then(|oe|oe.parent_element())
+            .and_then(|oe|oe.parent_element())
+            .and_then(|oe|{
+                oe.dyn_into::<HtmlElement>().ok()
+            });
+        TOP_SPACER = LIST_ELE.as_ref()
+            .and_then(|oe|oe.first_element_child())
+            .and_then(|oe|oe.first_element_child())
+            .and_then(|oe|{
+                oe.dyn_into::<HtmlElement>().ok()
+            });
+        BOTTOM_SPACER = LIST_ELE.as_ref()
+            .and_then(|oe|oe.last_element_child())
+            .and_then(|oe|oe.first_element_child())
+            .and_then(|oe|{
+                oe.dyn_into::<HtmlElement>().ok()
+            });
     }
     Ok(())
 }
+/// add new data to the list
 pub fn new_item(id: u64, method: String, uri: String) -> WebRes {
-    log(format!("new req {} {} {}", &id, &method, &uri).into());
     let list = get_list_ref();
-    let list_elements = list.child_element_count();
-    if list_elements > 19 {
-        //recycle old rows
-        //TODO check if auto scroll is on
-        Ok(())
+    let list_elements = list.child_element_count()-2;
+    let row = if list_elements > 19 {
+        //check if auto scroll is on
+        let s = get_scroll_ref();
+        log(format!("scrolled at {} {} {}", s.scroll_height(), s.scroll_top(), s.client_height()).into());
+        if s.scroll_height() - s.scroll_top() - get_item_hight()  <= s.client_height() {
+            //recycle old rows
+            let first_row = list.first_element_child().unwrap();
+            //1. add more height to dummy
+            let td = first_row.first_element_child().unwrap();
+            let td = td.dyn_into::<HtmlElement>()?;
+            adjust_spacer_h(&td, 1)?;
+            //2. move first to bottom
+            let row = first_row.next_element_sibling().unwrap();
+            let last_row = list.last_element_child().unwrap();
+            last_row.before_with_node_1(&row)?;
+            //3. scroll to it
+            row.scroll_into_view();
+            row
+        }else{
+            //only indicate new elements
+            let td = get_list_bottom_spacer();
+            adjust_spacer_h(td, 1)?;
+            return Ok(());
+        }        
     }else{
         //add new rows
         let doc = get_document_ref();
         let row = create_row(doc)?;
-        clear_row(&row)?;
-        let c = row.children();
-        let cid   = c.item(0).unwrap().dyn_into::<HtmlElement>()?;
-        let meth = c.item(2).unwrap().dyn_into::<HtmlElement>()?;
-        let host = c.item(3).unwrap().dyn_into::<HtmlElement>()?;
-        let path = c.item(4).unwrap().dyn_into::<HtmlElement>()?;
-        cid.set_inner_text(&format!("{}",id));
-        meth.set_inner_text(&method);
-
-        let uri = Url::new(&uri)?;
-
-        host.set_inner_text(&uri.origin());
-        path.set_inner_text(&uri.pathname());
+        add_ctx_men(&row)?;
+        let last_row = list.last_element_child().unwrap();
+        last_row.before_with_node_1(&row)?;
         
-        let row = row.dyn_into::<HtmlElement>()?;
-        if list_elements == 0 {
-            row.style().set_property("top","0px")?;
-        }else{
-            row.style().set_property("top",&format!("{}em", list_elements))?;
-        }        
-
-        list.append_with_node_1(&row)?;
         //time to setup infinit scrolling?
-        if list_elements > 19 {
-            scroll::setup_inf_scroll(list)
-        }else{
-            Ok(())
+        if list_elements == 19 {
+            log("TTS4ewa".into());
+            scroll::setup_inf_scroll(list)?;
         }
-    }
+        row
+    };
+    clear_row(&row)?;
+    let c = row.children();
+    let cid   = c.item(0).unwrap().dyn_into::<HtmlElement>()?;
+    let meth = c.item(2).unwrap().dyn_into::<HtmlElement>()?;
+    let host = c.item(3).unwrap().dyn_into::<HtmlElement>()?;
+    let path = c.item(4).unwrap().dyn_into::<HtmlElement>()?;
+    cid.set_inner_text(&format!("{}",id));
+    meth.set_inner_text(&method);
+
+    let uri = Url::new(&uri)?;
+
+    host.set_inner_text(&uri.origin());
+    path.set_inner_text(&uri.pathname());
+    Ok(())
 }
 
+/// create a new list row
+/// It is not attached to the DOM yet
 fn create_row(document: &web_sys::Document) -> Result<web_sys::Element, JsValue> {
     let row: web_sys::Element = document.create_element("tr")?;
     let id   = document.create_element("td")?;
@@ -100,6 +181,7 @@ fn create_row(document: &web_sys::Document) -> Result<web_sys::Element, JsValue>
     //row.set_class_name("");
     Ok(row)
 }
+/// replace all text in a row with some placeholder text
 fn clear_row(row: &web_sys::Element) -> WebRes {
     let c: web_sys::HtmlCollection = row.children();
     let id   = c.item(0).unwrap().dyn_into::<web_sys::HtmlElement>()?;

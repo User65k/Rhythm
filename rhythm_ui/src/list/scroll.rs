@@ -1,38 +1,62 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::{log, WebRes, show_error_w_val};
+use crate::{log, WebRes, show_error_w_val, list::{get_list_ref, get_scroll_ref, get_list_top_spacer, get_list_bottom_spacer, adjust_spacer_h, clear_row}};
 use web_sys::{Element, IntersectionObserver, HtmlElement, NodeList, IntersectionObserverInit, AddEventListenerOptions, Event, IntersectionObserverEntry};
+
+/*
+new + follow:
+
+1. add more height to dummy
+2. move first to bottom
+3. scroll to it
+
+scroll down / bottom reached:
+
+1. add more height to dummy
+1. remove height on bottom dummy
+2. move first to bottom
+
+scroll up / top reached
+
+1. remove height on top dummy
+1. add height on bottom dummy
+2. move bottom to top
+*/
 
 fn inv_scroll(e: Element, obs: &IntersectionObserver) -> WebRes
 {
-    //get first and last element of the list
-    let p = e.parent_node().unwrap().dyn_into::<Element>()?;
-    let (first, last) = (p.first_element_child().unwrap(), p.last_element_child().unwrap());
-    
     let e = e.dyn_into::<HtmlElement>()?;
-    let first = first.dyn_into::<HtmlElement>()?;
-    let last = last.dyn_into::<HtmlElement>()?;
+    let top = get_list_top_spacer();
+    let bottom = get_list_bottom_spacer();
 
-    if first == e {
+    let last = bottom.parent_element()
+                    .and_then(|oe|oe.previous_element_sibling())
+                    .and_then(|oe|{
+                        oe.dyn_into::<HtmlElement>().ok()
+                    }).unwrap();
+    let first = top.parent_element()
+                    .and_then(|oe|oe.next_element_sibling())
+                    .and_then(|oe|{
+                        oe.dyn_into::<HtmlElement>().ok()
+                    }).unwrap();
+    if *top == e {
         //first is now in view -> scrolling up
-        let off = first.offset_top()/first.offset_height();
+        let off = top.offset_height();
         if off > 0 {//first is not at the top -> we can load more
             //move last item to the top
-            obs.observe(&last.previous_element_sibling().unwrap());
+            clear_row(&last)?;
             first.before_with_node_1(&last)?;
-            last.style().set_property("top",&format!("{}em", off-1))?;
+            adjust_spacer_h(top, -1)?;
+            adjust_spacer_h(bottom, 1)?;
         }
-    }else if last == e{
+    }else if *bottom == e{
         //last is now in view -> scrolling down
-        obs.observe(&first.next_element_sibling().unwrap()); //2nd will be first
+        clear_row(&first)?;
         last.after_with_node_1(&first)?;//first is now last
-        let off = last.offset_top()/last.offset_height();
-        if first.offset_top() == 0 {
-            //first could not have a handler
-            obs.observe(&first);
-        }
-        first.style().set_property("top",&format!("{}em", 1+off))?;
+        adjust_spacer_h(bottom, -1)?;
+        adjust_spacer_h(top, 1)?;
     }
+    obs.observe(&e);
     log(JsValue::from_str("jo"));
     Ok(())
 }
@@ -46,6 +70,7 @@ fn load_scroll(e: NodeList, obs: IntersectionObserver) {
                 obs.unobserve(&n.target());
                 inv_scroll(n.target(), &obs)?;
             }
+            //log(n.into());
             x+= 1;
         }
         Ok(())
@@ -55,48 +80,45 @@ fn load_scroll(e: NodeList, obs: IntersectionObserver) {
 }
 pub fn setup_inf_scroll(list_root: &Element) -> WebRes
 {
+    let scroll_ele = get_scroll_ref();
+
     let obs_fn = Closure::wrap(Box::new(load_scroll) as Box<dyn Fn(NodeList, IntersectionObserver)>);
     
     let obs = IntersectionObserver::new_with_options(
         obs_fn.as_ref().unchecked_ref(),
         &IntersectionObserverInit::new()
-        .root(Some(list_root))
+        .root(Some(scroll_ele))
         .root_margin("0px"))?;
     
-    obs.observe(&list_root.first_element_child().unwrap());
-    obs.observe(&list_root.last_element_child().unwrap());
+    obs.observe(get_list_top_spacer());
+    obs.observe(get_list_bottom_spacer());
 
     obs_fn.forget();
-
-
+/*
     let ctx_fn = Closure::wrap(Box::new(fix_scroll) as Box<dyn Fn(Event)>);
-    list_root.add_event_listener_with_callback_and_add_event_listener_options(
+    scroll_ele.add_event_listener_with_callback_and_add_event_listener_options(
         "scroll",
         ctx_fn.as_ref().unchecked_ref(),
         AddEventListenerOptions::new().passive(true)
     )?;
-    ctx_fn.forget();
+    ctx_fn.forget();*/
     Ok(())
 }
+/*
 fn fix_scroll(e: Event) {
     if let Err(e) = move || -> WebRes {
         if let Some(ele) = e.target() {
             let e = ele.dyn_into::<HtmlElement>()?;
-            let pos = e.scroll_top();
-            let (first, last) = (e.first_element_child().unwrap(), e.last_element_child().unwrap());
-            let first = first.dyn_into::<HtmlElement>()?;
-            let last = last.dyn_into::<HtmlElement>()?;
+            let pos = e.scroll_top();  // 0 - (scrollHeight-clientHeight)
+            let first = get_list_top_spacer().offset_height();
+            let last = get_list_bottom_spacer().offset_height();
 
-            log(JsValue::from_str(&format!("scroll {} < {} < {}",
-                first.offset_top(),
-                pos,
-                last.offset_top()+last.offset_height()-e.offset_height()
-            )));
+            let height = e.scroll_height() - e.client_height();
 
-            if pos < first.offset_top()-last.offset_height() {
+            if pos < first {
                 //scrolled past top element
                 log(JsValue::from_str("prev all"));
-            }else if pos + e.offset_height() > last.offset_top()+2*last.offset_height() {
+            }else if pos > height-last {
                 //scrolled past last element
                 log(JsValue::from_str("past all"));
             }
@@ -105,4 +127,4 @@ fn fix_scroll(e: Event) {
     }() {
         show_error_w_val("scroll event err: ", e);
     }
-}
+}*/
