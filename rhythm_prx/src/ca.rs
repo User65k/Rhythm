@@ -86,7 +86,8 @@ impl CA{
 
     pub async fn get_cert_for(&mut self, host_name: &str) -> Result<Identity, RcgenError>
     {
-        if let Some(ident) = self.hosts.lock().await.get(host_name) {
+        let mut unlocked_hosts = self.hosts.lock().await;
+        if let Some(ident) = unlocked_hosts.get(host_name) {
             return Ok(ident.clone());
         }
 
@@ -108,7 +109,7 @@ impl CA{
 
         let i = Identity::from_pkcs12(&p12, password).map_err(|_e| RcgenError::KeyGenerationUnavailable)?;
 
-        self.hosts.lock().await.insert(host_name.to_string(),i.clone());
+        unlocked_hosts.insert(host_name.to_string(),i.clone());
         Ok(i)
     }
     fn get_params(host_name: &str) -> CertificateParams {
