@@ -1,15 +1,14 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::{log, WebRes, show_error_w_val};
-use web_sys::{Event, Element, MouseEvent, window, HtmlElement, AddEventListenerOptions, Document};
+use web_sys::{Element, MouseEvent, window, HtmlElement, AddEventListenerOptions, Document};
 
 /// event handler that opens the context menu for a row in the request list
-fn context_menu(evt: Event) {
-    evt.prevent_default();
+fn context_menu(evnt: MouseEvent) {
+    evnt.prevent_default();
     if let Err(e) = move || -> WebRes {
-        if let Some(ele) = evt.target() {
+        if let Some(ele) = evnt.target() {
             let ele = ele.dyn_into::<Element>()?;
-            let evnt = evt.dyn_into::<MouseEvent>()?;
 
             let window = window().unwrap();
             let document = window.document().unwrap();
@@ -19,9 +18,13 @@ fn context_menu(evt: Event) {
             menu.style().set_property("left", &format!("{}px", evnt.client_x()))?;
             menu.style().set_property("top", &format!("{}px", evnt.client_y()))?;
             menu.style().set_property("display", "")?;
+            if (menu.offset_height()+evnt.client_y() > document.body().unwrap().client_height()) {
+                //out of screen, adjust
+                menu.style().set_property("top", &format!("{}px", evnt.client_y()-menu.offset_height()))?;
+            }
             log(ele.into());
 
-            let ctx_fn = Closure::once_into_js(move |_e: Event| {
+            let ctx_fn = Closure::once_into_js(move |_e: MouseEvent| {
                 menu.style().set_property("display", "none");
             });
             
@@ -39,14 +42,14 @@ fn context_menu(evt: Event) {
 pub fn setup_ctx_men(document: &Document) -> WebRes
 {
     //setup callback
-    let ctx_fn = Closure::wrap(Box::new(context_menu) as Box<dyn Fn(Event)>);
+    let ctx_fn = Closure::wrap(Box::new(context_menu) as Box<dyn Fn(MouseEvent)>);
     let ucref = unsafe {
         CTX_MEN_OPEN = Some(ctx_fn.into_js_value());
         CTX_MEN_OPEN.as_ref().unwrap().unchecked_ref()
     };
 
     //add callback to all rows in the request list
-    let nodes = document.query_selector_all(".ilist tbody tr")?;
+    let nodes = document.query_selector_all(".ilist tbody tr, .tree_label")?;
     let mut x = 0;
     while x < nodes.length() {
         let n = nodes.get(x).unwrap();
