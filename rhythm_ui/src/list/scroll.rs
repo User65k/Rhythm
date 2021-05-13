@@ -51,10 +51,13 @@ fn inv_scroll(e: Element, obs: &IntersectionObserver) -> WebRes
         }
     }else if *bottom == e{
         //last is now in view -> scrolling down
-        clear_row(&first)?;
-        last.after_with_node_1(&first)?;//first is now last
-        adjust_spacer_h(bottom, -1)?;
-        adjust_spacer_h(top, 1)?;
+        let off = bottom.offset_height();
+        if off > 0 {
+            clear_row(&first)?;
+            last.after_with_node_1(&first)?;//first is now last
+            adjust_spacer_h(bottom, -1)?;
+            adjust_spacer_h(top, 1)?;
+        }
     }
     obs.observe(&e);
     log(JsValue::from_str("jo"));
