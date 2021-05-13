@@ -53,7 +53,15 @@ fn adjust_spacer_h(element: &HtmlElement, h: i32) -> WebRes
 {
     element.style().set_property("height",
         &format!("{}px",
-            (h*get_item_hight())+element.offset_height()))
+            (h*get_item_hight())+element.offset_height()))?;
+
+    if h<1 && element.offset_height() < 1 {       
+        element.parent_element().unwrap().dyn_into::<HtmlElement>()?.style().set_property("display","none")?;
+    }else{
+        //stops the intersection observer
+        element.parent_element().unwrap().dyn_into::<HtmlElement>()?.style().set_property("display","")?;
+    }
+    Ok(())
 }
 
 pub fn setup(document: &Document) -> WebRes
@@ -107,11 +115,16 @@ pub fn setup(document: &Document) -> WebRes
 pub fn new_item(id: u64, method: String, uri: String) -> WebRes {
     let list = get_list_ref();
     let list_elements = list.child_element_count()-2;
+    let s = get_scroll_ref();
+    let scroll_down = if s.scroll_height() > s.client_height() {
+        //log(format!("scrolled at {}-{}-{} <= {}", s.scroll_height(), s.scroll_top(), get_item_hight(), s.client_height()).into());
+        s.scroll_height() - s.scroll_top() - get_item_hight()  <= s.client_height()
+    }else{
+        false
+    };
     let row = if list_elements > 19 {
         //check if auto scroll is on
-        let s = get_scroll_ref();
-        log(format!("scrolled at {} {} {}", s.scroll_height(), s.scroll_top(), s.client_height()).into());
-        if s.scroll_height() - s.scroll_top() - get_item_hight()  <= s.client_height() {
+        if scroll_down {
             //recycle old rows
             let first_row = list.first_element_child().unwrap();
             //1. add more height to dummy
@@ -123,7 +136,6 @@ pub fn new_item(id: u64, method: String, uri: String) -> WebRes {
             let last_row = list.last_element_child().unwrap();
             last_row.before_with_node_1(&row)?;
             //3. scroll to it
-            row.scroll_into_view();
             row
         }else{
             //only indicate new elements
@@ -141,11 +153,13 @@ pub fn new_item(id: u64, method: String, uri: String) -> WebRes {
         
         //time to setup infinit scrolling?
         if list_elements == 19 {
-            log("TTS4ewa".into());
             scroll::setup_inf_scroll(list)?;
         }
         row
     };
+    if scroll_down {
+        s.scroll_to_with_x_and_y(0.0, s.scroll_height() as f64);
+    }
     clear_row(&row)?;
     let c = row.children();
     let cid   = c.item(0).unwrap().dyn_into::<HtmlElement>()?;
