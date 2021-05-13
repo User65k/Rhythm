@@ -4,6 +4,7 @@ use web_sys::{Document, window};
 mod ws;
 mod ctx;
 mod list;
+mod resize;
 
 type WebRes = Result<(),JsValue>;
 fn unwrap_some<T>(v: Option<T>) -> Result<T,JsValue> {
@@ -55,6 +56,7 @@ pub fn init_ui() {
     if let Err(e) = 
         list::setup(document)
         .and_then(|_| ctx::setup_ctx_men(document) )
+        .and_then(|_| resize::setup_resize(document) )
         .and_then(|_| {
             let loc = document.location().unwrap();
             ws::start_websocket(loc)
