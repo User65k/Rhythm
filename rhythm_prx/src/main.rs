@@ -13,7 +13,8 @@ use std::sync::Arc;
 use hyper_staticfile::Static;
 use std::path::Path;
 
-type Notifier = broadcast::Sender<Vec<u8>>;
+use websocket_codec::Message;
+type Notifier = broadcast::Sender<Message>;
 
 mod proxy;
 mod server;

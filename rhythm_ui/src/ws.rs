@@ -46,6 +46,7 @@ fn on_msg(e: MessageEvent) {
             Ok(todo) => {
                 if let Err(e) = match todo {
                     WSNotify::NewReq{id, method, uri} => new_item(id, method, uri),
+                    WSNotify::NewResp{id, status} => {Ok(())},
                     _ => Err(format!("server says: {:?}",&todo).into())
                 } {
                     show_error_w_val("error handling ws: ", e);

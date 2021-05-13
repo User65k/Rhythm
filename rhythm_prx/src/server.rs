@@ -115,8 +115,8 @@ async fn websocket(mut stream_mut: AsyncClient, broadcast: Notifier) {
 
     let mut rx = broadcast.subscribe();
 
-    while let Ok(b) = rx.recv().await {
-        if stream_mut.send(Message::binary(b)).await.is_err() {
+    while let Ok(item) = rx.recv().await {
+        if stream_mut.send(item).await.is_err() {
             return;
         }
     }

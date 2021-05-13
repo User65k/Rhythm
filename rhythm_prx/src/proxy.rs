@@ -16,6 +16,7 @@ use crate::uplink::{HTTPClient, make_tcp_con};
 use std::error::Error;
 use rhythm_proto::WSNotify;
 use log::{info, error, debug};
+use websocket_codec::Message;
 
 async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
 {
@@ -32,8 +33,8 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
             method: req_parts.method.to_string(),
             uri: req_parts.uri.to_string()
         };
-        if let Ok(b) = i.as_u8() {
-            let _a = broadcast.send(b).is_ok();
+        if let Ok(data) = i.as_u8() {
+            let _a = broadcast.send(Message::binary(data)).is_ok();
         }
     }
     
@@ -94,8 +95,8 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
                 id: req_id,
                 status: parts.status.as_u16()
             };
-            if let Ok(b) = i.as_u8() {
-                let _a = broadcast.send(b).is_ok();
+            if let Ok(data) = i.as_u8() {
+                let _a = broadcast.send(Message::binary(data)).is_ok();
             }
         },
         Err(e) => error!("{:?}", e)
@@ -312,11 +313,13 @@ pub async fn process_connect_req(
 
                         if dont_intercept.is_match(auth.as_str()) {
                             if let Err(e) = pass_throught(tcp_stream, &auth).await {
-                                error!("server io error for {}: {}", auth, e);
+                                error!("server io error for {}: {}", &auth, &e);
+                                let _ = broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
                             };
                         }else{
-                            if let Err(e) = tls_mitm(ca, tcp_stream, &auth, broadcast, client, db).await {
-                                error!("server error for {}:", auth);
+                            if let Err(e) = tls_mitm(ca, tcp_stream, &auth, broadcast.clone(), client, db).await {
+                                error!("server error for {}:", &auth);
+                                let _ = broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
                                 let mut e = &*e;
                                 loop {
                                     error!("\t{}", e);
@@ -325,7 +328,6 @@ pub async fn process_connect_req(
                                         None => break,
                                     }
                                 }
-                                //TODO forward the error to the UI
                             };
                         }
                     },
