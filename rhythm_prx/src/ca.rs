@@ -22,10 +22,9 @@ const ORG: &str = "Rhythm";
 const CA_CERT: &str = "./ca_cert.der";
 const CA_KEY: &str = "./ca_key.der";
 
-#[derive(Clone)]
 pub struct CA {
-    ca: Arc<Certificate>,
-    hosts: Arc<Mutex<HashMap<String, Identity>>>
+    ca: Certificate,
+    hosts: Mutex<HashMap<String, Identity>>
 }
 
 impl CA{
@@ -54,16 +53,16 @@ impl CA{
                     Certificate::from_params(params)?
                 };
                 Ok(CA {
-                    ca: Arc::new(c),
-                    hosts: Arc::new(Mutex::new(HashMap::new()))
+                    ca: c,
+                    hosts: Mutex::new(HashMap::new())
                 })
             },
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
 
                     Ok(CA {
-                        ca: Arc::new(CA::gen_and_save_new_ca()?),
-                        hosts: Arc::new(Mutex::new(HashMap::new()))
+                        ca: CA::gen_and_save_new_ca()?,
+                        hosts: Mutex::new(HashMap::new())
                     })
                 }else{
                     Err(Box::new(e))
@@ -84,7 +83,7 @@ impl CA{
         Ok(cert)
     }
 
-    pub async fn get_cert_for(&mut self, host_name: &str) -> Result<Identity, RcgenError>
+    pub async fn get_cert_for(&self, host_name: &str) -> Result<Identity, RcgenError>
     {
         let mut unlocked_hosts = self.hosts.lock().await;
         if let Some(ident) = unlocked_hosts.get(host_name) {

@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server};
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{Mutex, broadcast, RwLock};
 
 use regex::RegexSet;
 use std::sync::Arc;
@@ -25,14 +25,16 @@ use uplink::{make_client, HTTPClient};
 use ca::CA;
 use db::DB;
 
-#[derive(Clone)]
-struct Cfg {
-    ca: CA,
-    dont_intercept: Arc<RegexSet>,
+pub struct Cfg {
     fileserver: Static,
     broadcast: Notifier,
+    settings: RwLock<Settings>,
     client: HTTPClient,
-    db: Arc<Mutex<DB>>
+}
+struct Settings {
+    ca: CA,
+    dont_intercept: RegexSet,
+    db: DB
 }
 
 #[tokio::main]
@@ -51,12 +53,12 @@ async fn main() {
         }
     };
     
-    let dont_intercept = Arc::new(RegexSet::new(&[
+    let dont_intercept = RegexSet::new(&[
         r".+\.google\..+",
+        r"allianzservices\..+",
         r".+\.github\.com(:[0-9]+)?",
         r".+\.docs\.rs(:[0-9]+)?",
-    ]).unwrap());
-    let client = make_client();
+    ]).unwrap();
 
     // Create the TLS acceptor.
     let db = match DB::new() {
@@ -67,16 +69,18 @@ async fn main() {
             return;
         }
     };
-
-    let db = Arc::new(Mutex::new(db));
-    let cfg = Cfg {
+    let settings = RwLock::new(Settings {
         ca,
         dont_intercept,
+        db
+    });
+    let client = make_client();
+    let cfg = Arc::new(Cfg {
         fileserver,
         broadcast,
-        client,
-        db
-    };
+        settings,
+        client
+    });
 
     let make_service = make_service_fn(move |_| {
         let cfg = cfg.clone();
@@ -93,7 +97,7 @@ async fn main() {
     }
 }
 
-async fn proxy(req: Request<Body>, cfg: Cfg)
+async fn proxy(req: Request<Body>, cfg: Arc<Cfg>)
  -> Result<Response<Body>, hyper::Error>
 {
     //println!("req: {:?}", req);
@@ -107,19 +111,19 @@ async fn proxy(req: Request<Body>, cfg: Cfg)
         // Host: www.domain.com:443
         // Proxy-Connection: Keep-Alive
         // ```
-        proxy::process_connect_req(cfg.ca, req, cfg.dont_intercept, cfg.broadcast, cfg.client, cfg.db).await
+        proxy::process_connect_req(req, cfg).await
     } else {
         if req.uri().authority().is_none() {
             //Web UI
             // Received an HTTP request like:
             // ```
             // GET / HTTP/1.1
-            return server::render_webui(req, cfg.fileserver, cfg.broadcast).await;
+            return server::render_webui(req, cfg).await;
         }
         // Received an HTTP request like:
         // ```
         // GET www.domain.com:443/ HTTP/1.1
         // Host: www.domain.com:443
-        proxy::process_http_req(req, cfg.broadcast, cfg.client, cfg.db).await
+        proxy::process_http_req(req, cfg).await
     }
 }

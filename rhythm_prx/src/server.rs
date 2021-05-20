@@ -5,14 +5,15 @@ use hyper_staticfile::Static;
 use tokio_util::codec::{Decoder, Framed};
 use websocket_codec::{ClientRequest, MessageCodec, Message, Opcode};
 
-use crate::Notifier;
+use crate::{Notifier,Cfg};
 pub type AsyncClient = Framed<hyper::upgrade::Upgraded, MessageCodec>;
 use serde::{Deserialize, Deserializer, de::Error as SerdeErr};
 use std::str::FromStr;
 use std::fmt::Display;
 use rhythm_proto::APICall;
+use std::sync::Arc;
 
-pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Notifier) -> Result<Response<Body>, hyper::Error> {
+pub async fn render_webui(req: Request<Body>, cfg: Arc<Cfg>) -> Result<Response<Body>, hyper::Error> {
     match req.uri().path() {
         "/events" => {
             let mut res = Response::new(Body::empty());
@@ -31,7 +32,7 @@ pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Not
                 match hyper::upgrade::on(req).await {
                     Ok(upgraded) => {
                         let client = MessageCodec::server().framed(upgraded);
-                        websocket(client, broadcast).await;
+                        websocket(client, cfg).await;
                     }
                     Err(e) => eprintln!("upgrade error: {}", e),
                 }
@@ -54,7 +55,7 @@ pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Not
             Ok(resp)
         },
         "/favicon.ico" | "/main.js" | "/main.wasm" | "/index.html" | "/style.css" => {
-            match fileserver.serve(req).await {
+            match cfg.fileserver.clone().serve(req).await {
                 Ok(mut r) => {
                     r.headers_mut().insert(header::CACHE_CONTROL, hyper::header::HeaderValue::from_static("no-cache"));
                     Ok(r)
@@ -68,7 +69,7 @@ pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Not
             }
         },
         "/api" => {
-            api(req, broadcast).await.or_else(|(c,s)|{
+            api(req, cfg).await.or_else(|(c,s)|{
                 let mut resp = Response::new(Body::from(s));
                 *resp.status_mut() = c;
                 Ok(resp)
@@ -82,7 +83,7 @@ pub async fn render_webui(req: Request<Body>, fileserver: Static, broadcast: Not
     }
 }
 
-async fn api(req: Request<Body>, broadcast: Notifier) -> Result<Response<Body>,(hyper::StatusCode, String)> {
+async fn api(req: Request<Body>, cfg: Arc<Cfg>) -> Result<Response<Body>,(hyper::StatusCode, String)> {
     let op = if let Some(q) = req.uri().query(){
         match serde_urlencoded::from_str::<APICall>(q) {
             Ok(op) => op,
@@ -110,10 +111,10 @@ async fn api(req: Request<Body>, broadcast: Notifier) -> Result<Response<Body>,(
     Ok(resp)
 }
 
-async fn websocket(mut stream_mut: AsyncClient, broadcast: Notifier) {
+async fn websocket(mut stream_mut: AsyncClient, cfg: Arc<Cfg>) {
     println!("WS!");
 
-    let mut rx = broadcast.subscribe();
+    let mut rx = cfg.broadcast.subscribe();
 
     while let Ok(item) = rx.recv().await {
         if stream_mut.send(item).await.is_err() {

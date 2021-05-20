@@ -24,10 +24,11 @@ impl From<SerializationError> for DBErr {
     }
 }
 
-
+#[derive(Clone)]
 pub struct DB {
     db: Db
 }
+
 impl DB {
     pub fn new() -> Result<DB,DBErr> {
         DB::open(Path::new("/tmp/rhythm"))
@@ -38,10 +39,10 @@ impl DB {
             db
         })
     }
-    pub fn save_to_disk(&mut self, file_name: &str) -> Result<(),DBErr> {
+    pub fn save_to_disk(&self, file_name: &str) -> Result<(),DBErr> {
         Ok(self.db.flush().map(|_|())?)
     }
-    pub fn store_req(&mut self, parts: &request::Parts, body: &Bytes) -> Result<u64, DBErr> {
+    pub fn store_req(&self, parts: &request::Parts, body: &Bytes) -> Result<u64, DBErr> {
         let last_key = self.db.generate_id()?;
         let req: Request = parts.into();
         let iv: IVec = req.try_into()?;
@@ -53,7 +54,7 @@ impl DB {
         req_body_store.insert(last_key.to_be_bytes(), body.as_ref())?;
         Ok(last_key)
     }
-    pub fn store_resp(&mut self, req: u64, parts: &response::Parts, body: &Bytes) -> Result<(), DBErr> {
+    pub fn store_resp(&self, req: u64, parts: &response::Parts, body: &Bytes) -> Result<(), DBErr> {
         let resp: Response = parts.into();
         let iv: IVec = resp.try_into()?;
         

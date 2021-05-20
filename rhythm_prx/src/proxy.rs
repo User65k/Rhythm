@@ -7,25 +7,24 @@ use tokio::{net::TcpStream, sync::Mutex};
 
 use futures_util::future::try_join;
 
-use crate::{Notifier, db::DB, ca::CA};
+use crate::{Cfg, Notifier, Settings, ca::CA, db::DB, uplink::{HTTPClient, make_tcp_con}};
 use regex::RegexSet;
-use std::sync::Arc;
+use std::sync::{Arc, RwLockReadGuard};
 use std::io;
-use crate::uplink::{HTTPClient, make_tcp_con};
 
 use std::error::Error;
 use rhythm_proto::WSNotify;
 use log::{info, error, debug};
 use websocket_codec::Message;
 
-async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
+async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, db: DB) -> Result<Response<Body>, hyper::Error>
 {
     //let _a = broadcast.send(req.uri().to_string()).is_ok();
     
     //store request in DB
     let (req_parts, body) = req.into_parts();
     let body = hyper::body::to_bytes(body).await?;
-    let req_id = db.lock().await.store_req(&req_parts, &body);
+    let req_id = db.store_req(&req_parts, &body);
     
     if let Ok(id) = &req_id {
         let i = WSNotify::NewReq {
@@ -87,7 +86,7 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
     let body = hyper::body::to_bytes(body).await?;
     match req_id {
         Ok(req_id) => {
-            if let Err(e) = db.lock().await.store_resp(req_id, &parts, &body) {
+            if let Err(e) = db.store_resp(req_id, &parts, &body) {
                 error!("{:?}", e);
             }
 
@@ -158,7 +157,7 @@ async fn upgrade_proxy_req(resp: hyper::http::response::Parts,
     }
 }
 
-async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, client: HTTPClient, db: Arc<Mutex<DB>>) -> Result<(), Box<dyn Error>> {
+async fn tls_mitm(tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, client: HTTPClient, settings: &Settings) -> Result<(), Box<dyn Error>> {
     /*
     read first 6 byte and check if it is TLS to
     support other things than HTTPS here
@@ -176,7 +175,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
     */
     if (n>1 && b1[0]==0x16 && b1[1] == 0x3) {//TLS1.0, TLS1.1, TLS1.2, TLS1.3
     
-        let cert = ca.get_cert_for(auth.host()).await?;
+        let cert = settings.ca.get_cert_for(auth.host()).await?;
         let tls_acceptor =
             tokio_native_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
         let tls_stream = tls_acceptor.accept(tcp_stream).await?;
@@ -197,7 +196,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
             };
             *req.uri_mut() = url.build().unwrap();
             let client = client.clone();
-            http_mitm(req, client, broadcast.clone(), db.clone())
+            http_mitm(req, client, broadcast.clone(), settings.db.clone())
         });
         let http = Http::new();
         let conn = http.serve_connection(tls_stream, some_service);
@@ -230,7 +229,7 @@ async fn tls_mitm(mut ca: CA, tcp_stream: TcpStream, auth: &Authority, broadcast
             };
             *req.uri_mut() = url.build().unwrap();
             let client = client.clone();
-            http_mitm(req, client, broadcast.clone(), db.clone())
+            http_mitm(req, client, broadcast.clone(), settings.db.clone())
         });
         let http = Http::new();
         let conn = http.serve_connection(tcp_stream, some_service);
@@ -281,17 +280,12 @@ pub async fn transparent_prxy() -> std::io::Result<()> {
     Ok(())
 }// */
 
-pub async fn process_http_req(req: Request<Body>, broadcast: Notifier, client: HTTPClient, db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
+pub async fn process_http_req(req: Request<Body>, cfg: Arc<Cfg>) -> Result<Response<Body>, hyper::Error>
 {
-    http_mitm(req, client, broadcast, db).await
+    let settings = cfg.settings.read().await;
+    http_mitm(req, cfg.client.clone(), cfg.broadcast.clone(), settings.db.clone()).await
 }
-pub async fn process_connect_req(
-    ca: CA,
-    mut req: Request<Body>,
-    dont_intercept: Arc<RegexSet>,
-    broadcast: Notifier,
-    client: HTTPClient,
-    db: Arc<Mutex<DB>>) -> Result<Response<Body>, hyper::Error>
+pub async fn process_connect_req(mut req: Request<Body>, cfg: Arc<Cfg>) -> Result<Response<Body>, hyper::Error>
 {
     match req.uri().authority(){
         None => {
@@ -307,19 +301,25 @@ pub async fn process_connect_req(
             tokio::task::spawn(async move {
                 match hyper::upgrade::on(&mut req).await {
                     Ok(upgraded) => {
+                        let settings = cfg.settings.read().await;
                         let parts = upgraded.downcast::<AddrStream>().expect("upgrade not AddrStream");
                         //ignore parts.read_buf - its empty in case of HTTP CONNECT
                         let tcp_stream = parts.io.into_inner();
 
-                        if dont_intercept.is_match(auth.as_str()) {
+                        if settings.dont_intercept.is_match(auth.as_str()) {
                             if let Err(e) = pass_throught(tcp_stream, &auth).await {
                                 error!("server io error for {}: {}", &auth, &e);
-                                let _ = broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
+                                let _ = cfg.broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
                             };
                         }else{
-                            if let Err(e) = tls_mitm(ca, tcp_stream, &auth, broadcast.clone(), client, db).await {
+                            if let Err(e) = tls_mitm(
+                                    tcp_stream,
+                                    &auth,
+                                    cfg.broadcast.clone(),
+                                    cfg.client.clone(),
+                                    &settings).await {
                                 error!("server error for {}:", &auth);
-                                let _ = broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
+                                let _ = cfg.broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
                                 let mut e = &*e;
                                 loop {
                                     error!("\t{}", e);
