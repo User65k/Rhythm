@@ -1,0 +1,252 @@
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+  <link rel='stylesheet' href='./style.css' type='text/css' media='all' />
+  <style>
+  @keyframes fadeIn { 
+    from { opacity: 0; } 
+  }
+  
+  .loading {
+      animation: fadeIn 1.5s infinite alternate;
+      filter: blur(3px);
+  }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fork-awesome@1.1.7/css/fork-awesome.min.css" integrity="sha256-gsmEoJAws/Kd3CjuOQzLie5Q3yshhvmo7YNtBG7aaEY=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/styles/default.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.2/highlight.min.js"></script>
+</head>   
+<body>
+<div class="grid">
+  <div>
+    <form action="#">
+      Switch: <div class="switch">
+        <input id="switch-1" type="checkbox" class="switch-input" />
+        <label for="switch-1" class="switch-label">Switch</label>
+      </div>
+    </form>
+    <progress value="70" max="100">70 %</progress>
+
+    <ul class="tree">
+      <li>
+        <input type="checkbox" checked="checked" id="c1" />
+        <label class="tree_label" for="c1">Level 0</label>
+        <ul>
+          <li>
+            <input type="checkbox" checked="checked" id="c2" />
+            <label for="c2" class="tree_label">Level 1</label>
+            <ul>
+              <li><span class="tree_label">Level 2</span></li>
+              <li><span class="tree_label"><a><i class="fa fa-file-code-o" aria-hidden="true"></i> Level 2</a></span></li>
+            </ul>
+          </li>
+          <li>
+            <input type="checkbox" id="c3" />
+            <label for="c3" class="tree_label">Looong level 1 <br/>label text <br/>with line-breaks</label>
+            <ul>
+              <li><span class="tree_label">Level 2</span></li>
+              <li>
+                <input type="checkbox" id="c4" />
+                <label for="c4" class="tree_label"><span class="tree_custom">Specified tree item view</span></label>
+                <ul>
+                  <li><span class="tree_label">Level 3</span></li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li>
+        <input type="checkbox" id="c5" />
+        <label class="tree_label" for="c5">Level 0</label>
+        <ul>
+          <li>
+            <input type="checkbox" id="c6" />
+            <label for="c6" class="tree_label">Level 1</label>
+            <ul>
+              <li><span class="tree_label">Level 2</span></li>
+            </ul>
+          </li>
+          <li>
+            <input type="checkbox" id="c7" />
+            <label for="c7" class="tree_label">Level 1</label>
+            <ul>
+              <li><span class="tree_label">Level 2</span></li>
+              <li>
+                <input type="checkbox" id="c8" />
+                <label for="c8" class="tree_label">Level 2</label>
+                <ul>
+                  <li><span class="tree_label">Level 3</span></li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+  <div class="gutter-column-1"></div>
+  <div>
+    <pre>
+      <code>
+  @requires_authorization
+  def somefunc(param1='', param2=0):
+      r'''A docstring'''
+      if param1 > param2: # interesting
+          print 'Gre\'ater'
+      return (param2 - param1 + 1 + 0b10l) or None
+
+  class SomeClass:
+      pass
+
+  >>> message = '''interpreter
+  ... prompt'''
+      </code>
+    </pre>
+  </div>
+  <div class="gutter-column-3"></div>
+  <div>
+    <div class="tabs">
+      <div class="tab">
+        <input type="radio" id="tab-1" name="tab-group-1" checked>
+        <label for="tab-1">Tab One</label>
+        <div class="content">
+          <p>Stuff for Tab One Lorem ipsum dolor sit amet, consetetur sadipscing elitr,
+            sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam <span title="decoded" style="background-color: bisque;">erat, sed diam</span> voluptua.
+            ████████
+            ⬛
+            ᛠᛡᛢᛣᛤ 
+            ᚠ U+16A0 - ᛸ U+16F8 ᛯᛰᛱᛲᛳᛴᛵᛶᛷᛸ ᛥᛦᛧᛨᛩᛪ᛫᛬᛭ᛮ
+            ▀▁▂▃▄▅▆▇ █▉▊▋▌▍▎▏▐▕ ▀ U+2580 - ▐ U+2590
+            ▖▗▘▙▚▛▜▝▞▟ ▖ U+2596 - ▟ U+259F
+          </p>
+        </div>
+      </div>
+      <div class="tab">
+        <input type="radio" id="tab-2" name="tab-group-1">
+        <label for="tab-2">Tab Two</label>
+        <div class="content">
+          <pre>
+            <code>
+  GET /abc?jo=lo HTTP/1.1
+  Location: /yeha
+
+  .lol {
+    background-color:red;
+  }
+            </code>
+          </pre>
+              </div>
+      </div>
+      <div class="tab">
+        <input type="radio" id="tab-3" name="tab-group-1">
+        <label for="tab-3">Tab Three</label>
+        <div class="content">
+          <pre>
+            <code>
+  GET /abc?jo=lo HTTP/1.1
+  Location: /yeha
+
+  {"jo":5}
+            </code>
+          </pre>
+        </div>
+      </div>
+    </div>
+
+
+
+  <!--
+    <i class="fa fa-spinner fa-spin fa-3x fa-fw"></i>
+    <i class="fa fa-circle-o-notch fa-spin fa-3x fa-fw"></i>
+    <i class="fa fa-refresh fa-spin fa-3x fa-fw"></i>
+    <i class="fa fa-cog fa-spin fa-3x fa-fw"></i>
+    <i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>
+  -->
+
+    <i class="fa fa-file-archive-o" aria-hidden="true"></i>
+    <i class="fa fa-file-audio-o" aria-hidden="true"></i>
+    <i class="fa fa-file-code-o" aria-hidden="true"></i>
+    <i class="fa fa-file-epub" aria-hidden="true"></i>
+    <i class="fa fa-file-excel-o" aria-hidden="true"></i>
+    <i class="fa fa-file-image-o" aria-hidden="true"></i>
+    <i class="fa fa-file-movie-o" aria-hidden="true"></i>
+    <i class="fa fa-file-pdf-o" aria-hidden="true"></i>
+    <i class="fa fa-file-text-o" aria-hidden="true"></i>
+    <i class="fa fa-file-powerpoint-o" aria-hidden="true"></i>
+    <i class="fa fa-file-word-o" aria-hidden="true"></i>
+    <i class="fa fa-folder-o" aria-hidden="true"></i>
+    <i class="fa fa-folder-open-o" aria-hidden="true"></i>
+    <i class="fa fa-low-vision" aria-hidden="true"></i>
+    <i class="fa fa-binoculars" aria-hidden="true"></i>
+    <i class="fa fa-cloud-download" aria-hidden="true"></i>
+    <i class="fa fa-database" aria-hidden="true"></i>
+    <i class="fa paper-plane" aria-hidden="true"></i>
+    <i class="fa paper-plane-o" aria-hidden="true"></i>
+    <i class="fa fa-pencil" aria-hidden="true"></i>
+    <i class="fa fa-plus" aria-hidden="true"></i>
+    <i class="fa fa-refresh" aria-hidden="true"></i>
+    <i class="fa fa-retweet" aria-hidden="true"></i>
+    <i class="fa fa-sitemap" aria-hidden="true"></i>
+    <i class="fa fa-sliders" aria-hidden="true"></i>
+    <i class="fa fa-trash-o" aria-hidden="true"></i>
+    <i class="fa fa-wrench" aria-hidden="true"></i>
+    <i class="fa fa-floppy-o" aria-hidden="true"></i>
+    <i class="fa fa-paperclip" aria-hidden="true"></i>
+    <i class="fa fa-repeat" aria-hidden="true"></i>
+    <i class="fa fa-step-forward" aria-hidden="true"></i>
+    <i class="fa fa-pause" aria-hidden="true"></i>
+    <i class="fa fa-external-link" aria-hidden="true"></i>
+    <i class="fa fa-flag" aria-hidden="true"></i>
+    <i class="fa fa-bullseye" aria-hidden="true"></i>
+    <i class="fa fa-certificate" aria-hidden="true"></i>
+    <i class="fa">🍪</i>
+
+    <b class="c b">GET</b>
+    <b class="c b">POST</b>
+    <b class="c r">DELETE</b>
+    <b class="c">OPTIONS</b>
+  </div>
+  <div class="gutter-row-1"></div>
+  <div>
+    <table class="ilist">
+      <thead>
+        <tr>
+          <th>ID <span></span></th>
+          <th>Time <span></span></th>
+          <th>Method <span></span></th>
+          <th>Host <span></span></th>
+          <th>Path <span></span></th>
+          <th>Code+Reason <span></span></th>
+          <th>RTT <span></span></th>
+          <th>Size <span></span></th>
+          <th>Tags <span></span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="spacer"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr class="spacer"><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+    <ul class="ContextMenu ContextMenu--theme-default is-open" id="menu" data-contextmenu="0" tabindex="-1" style="display:none;">
+        <li class="ContextMenu-item" data-contextmenuitem="0" tabindex="0">Cut</li>
+        <li class="ContextMenu-item" data-contextmenuitem="1" tabindex="0">Copy</li>
+        <li class="ContextMenu-item" data-contextmenuitem="2" tabindex="0">Paste</li>
+        <li class="ContextMenu-divider"></li>
+        <li class="ContextMenu-item" data-contextmenuitem="4" tabindex="0">Select All</li>
+    </ul>
+  </div>
+</div>
+<script type="module">
+import init, { init_ui } from './main.js';
+async function run() {
+  await init('./main.wasm');
+
+  init_ui();
+}
+run();
+</script>
+<script>
+hljs.initHighlightingOnLoad();
+</script>
+</body></html>  

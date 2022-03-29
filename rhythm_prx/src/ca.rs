@@ -87,6 +87,7 @@ impl CA{
     {
         let mut unlocked_hosts = self.hosts.lock().await;
         if let Some(ident) = unlocked_hosts.get(host_name) {
+            //TODO check if still valid
             return Ok(ident.clone());
         }
 

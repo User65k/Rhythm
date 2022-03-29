@@ -49,6 +49,8 @@ pub struct Uplink {
     proxies: Vec<ProxyEntry>,
     hosts: HashMap<String, String>
 }
+//static mut PROXIES: Vec<ProxyEntry> = Vec::new();
+//static mut HOSTS: HashMap<String, String> = HashMap::new();
 
 impl Uplink {
     fn new(proxies: Vec<ProxyEntry>) -> Uplink {
@@ -212,15 +214,17 @@ sock.set_nodelay(config.nodelay)
     .map_err(ConnectError::m("tcp set_nodelay error"))?;
 */
 
+
+
 pub fn make_client() -> HTTPClient {
 
-    let mut proxies = Vec::new();
+    let mut proxies = Vec::new();/*
     proxies.push(ProxyEntry{
         ep: "127.0.0.1:1090".to_string(),
         kind: ProxyType::Socks5,
         user: "".to_string(),
         pass: "".to_string()
-    });
+    });*/
     /*proxies.push(ProxyEntry{
         ep: "127.0.0.1:8081".to_string(),
         kind: ProxyType::HTTP,
@@ -243,17 +247,17 @@ pub fn make_client() -> HTTPClient {
     toc.set_connect_timeout(timeout);
     toc.set_read_timeout(timeout);
     toc.set_write_timeout(timeout);
-    Client::builder().build(toc)
+    Client::builder().build(toc) //.pool_idle_timeout(Duration::from_secs(30))
 }
 
 pub async fn make_tcp_con(uri: Uri) -> Result<TcpStream, io::Error> {
     let mut proxies = Vec::new();
-    proxies.push(ProxyEntry{
+    /*proxies.push(ProxyEntry{
         ep: "127.0.0.1:1090".to_string(),
         kind: ProxyType::Socks5,
         user: "".to_string(),
         pass: "".to_string()
-    });
+    });*/
     let hosts = HashMap::new();
     Uplink::setup_stream(&proxies, &hosts, uri).await
 }

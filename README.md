@@ -1,4 +1,4 @@
-[![Project Status: Concept – Minimal or no implementation has been done yet, or the repository is only intended to be a limited example, demo, or proof-of-concept.](https://www.repostatus.org/badges/latest/concept.svg)](https://www.repostatus.org/#concept)
+[![Project Status: Abandoned – Initial development has started, but there has not yet been a stable, usable release; the project has been abandoned and the author(s) do not intend on continuing development.](https://www.repostatus.org/badges/latest/abandoned.svg)](https://www.repostatus.org/#abandoned)
 
 # A intercepting Proxy in Rust
 
@@ -9,6 +9,23 @@ Java Proxys eat your RAM and look ugly while doing it.
 
 Also, ZAP messes up base64 decoding and is not able to alter all the filds in a HTTP request (like the Host).
 Furthermore, Burp and esspecially ZAP could use some proxychains style proxy support.
+
+## build
+
+1. https://docs.rs/openssl/latest/openssl/#building
+2. https://rustwasm.github.io/wasm-pack/installer/
+3. `cargo build -p rhythm_prx`
+4. `cd rhythm_ui`
+5. `wasm-pack build --target web`
+6. `cd ..`
+7. `cp rhythm_ui/pkg/rhythm_ui.js main.js`
+8. `cp rhythm_ui/pkg/rhythm_ui_bg.wasm main.wasm`
+9. `cat rhythm_ui/assets/{code,ctx_men,ilist,misc,switch,tabs,tree}.css > style.css`
+10. `cp rhythm_ui/assets/index.html index.html`
+
+## run
+
+`cargo run -p rhythm_prx`
 
 ## Features
 
@@ -23,7 +40,7 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
     - [ ] with match list (Foxyproxy style)
     - [ ] HTTP without Connect in case of HTTP with a single Proxy
 - [x] Hosts entries in the Proxy (change name resolution)
-- [ ] Transparent Mode (Listen with fake cert @ port + forward it)
+- [x] Transparent Mode (Listen with fake cert @ port + forward it)
 - [ ] Breakpoints (ZAP or HTTPToolkit Style)
 - [ ] Client Certificates
 - [ ] Non HTTP
@@ -37,12 +54,15 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
 - [x] Gateway Timeout
 - [ ] HTTP/2
 - [ ] Websockets
+- [ ] Session completition (auto add Cookies, Auth-Header and CSRF-Tokens if missing)
 
 - [x] [WASM](https://webassembly.org/) Gui
-    - [ ] Tool Tips for URL / Base64 / XMLEntities
-    - [ ] Page Map
-    - [ ] History
-    - [ ] Requests / Responses
+  - [x] History
+  - [ ] Options
+  - [ ] Edit Requests / Breakpoints
+  - [ ] Requests / Responses
+  - [ ] Tool Tips for URL / Base64 / XMLEntities
+  - [ ] Page Map
 
 - [ ] Start proxied App (HTTPToolkit Style)
 - [ ] Start external Application with Parameters from a Request
@@ -51,17 +71,9 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
 - [ ] Plugins via [WASI](https://wasi.dev/)
   - [ ] Passive Scanners
   - [ ] Active Scanners
-  - [ ] scan - [rustbuster](https://github.com/phra/rustbuster)?
+  - [ ] Burp Plugin bridge
+  - [ ] scan - [feroxbuster](https://github.com/epi052/feroxbuster)?
     - [ ] vHosts
     - [ ] dirs
     - [ ] HTTP Methods
 
-## build
-
-
-```
-sudo apt install pkg-config libssl-dev
-cargo build -p rhythm_prx
-
-wasm-pack build --target web
-```

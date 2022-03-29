@@ -1,0 +1,36 @@
+.c
+{
+    font-family: consolas,courier,monospace;
+    letter-spacing: -1px;
+    font-variant: small-caps;
+}
+.r{color:red;}
+.b{color:blue;}
+.g{color:green;}
+.y{color:orange;}
+
+div.grid {
+  display: grid;
+  grid-template: 
+            "t  g1 req g2 resp" auto
+            "g3 g3  g3 g3   g3" 3px
+            " h  h   h  h    h" 16em / 1fr 3px 1fr 3px 1fr;
+  height: 100%;
+}
+.grid > div.gutter-column-1,
+.grid > div.gutter-column-3 {
+    cursor:col-resize;
+    background-color: black;
+}
+.grid > div.gutter-row-1 {
+    cursor: row-resize;
+    grid-area: g3;
+    background-color: black;
+}
+.grid > div:first-child {
+    grid-area: t;
+}
+.grid > div:last-child {
+    grid-area: h;
+    background-color: aliceblue;
+}

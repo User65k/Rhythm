@@ -45,7 +45,6 @@ serde_urlencoded = "0.7"
 #formdata
 #encoding_rs
 
-rustbuster = {git = "https://github.com/phra/rustbuster"}
 #plugins:
 #wasmer = "1.0"
 #wasmer-wasi = "1.0"

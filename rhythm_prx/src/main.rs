@@ -55,7 +55,6 @@ async fn main() {
     
     let dont_intercept = RegexSet::new(&[
         r".+\.google\..+",
-        r"allianzservices\..+",
         r".+\.github\.com(:[0-9]+)?",
         r".+\.docs\.rs(:[0-9]+)?",
     ]).unwrap();

@@ -1,0 +1,46 @@
+.ilist tbody{
+    position: relative;
+    height: 15em;
+    overflow: scroll;
+}
+.ilist tbody tr{
+    position: absolute;
+}
+
+table.ilist{
+    width:100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+.ilist tbody{
+    display:block;
+}
+.ilist thead tr{
+    display:block;
+    height: 1em;
+}
+.ilist tbody tr{
+    height: 1em;
+}
+.ilist thead tr th{
+  margin: 0px;
+  padding: 0px;
+}
+.ilist tbody tr td{
+    margin: 0;
+    padding: 0;
+}
+
+.ilist tbody tr:nth-child(even){background-color: lightyellow;}
+.ilist tbody tr:hover{background-color: paleturquoise;}
+
+.ilist thead {
+  background: gray;
+  color:#fff;
+}
+
+.ilist th, .ilist td {
+  padding: 5px;
+  text-align: left;
+  width: 200px;
+}
