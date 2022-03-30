@@ -33,4 +33,5 @@ div.grid {
 .grid > div:last-child {
     grid-area: h;
     background-color: aliceblue;
+    overflow:auto;
 }
