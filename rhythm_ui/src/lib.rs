@@ -1,16 +1,16 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, window};
+use web_sys::{window, Document};
 
-mod ws;
 mod ctx;
 mod list;
 mod resize;
+mod ws;
 
-type WebRes = Result<(),JsValue>;
-fn unwrap_some<T>(v: Option<T>) -> Result<T,JsValue> {
+type WebRes = Result<(), JsValue>;
+fn unwrap_some<T>(v: Option<T>) -> Result<T, JsValue> {
     if let Some(val) = v {
         Ok(val)
-    }else{
+    } else {
         Err(JsValue::from_str("expected value"))
     }
 }
@@ -28,19 +28,17 @@ extern "C" {
 static mut DOCUMENT: Option<Document> = None;
 
 fn get_document_ref() -> &'static Document {
-    unsafe {
-      DOCUMENT.as_ref().expect("No document root")
-    }
+    unsafe { DOCUMENT.as_ref().expect("No document root") }
 }
 fn show_error(err: &str) {
-  //TODO show Toast
-  //and log to the console
-  error(JsValue::from_str(err));
+    //TODO show Toast
+    //and log to the console
+    error(JsValue::from_str(err));
 }
 fn show_error_w_val(err: &str, js_err: JsValue) {
-  //TODO show Toast
-  //and log to the console
-  error2(JsValue::from_str(err), js_err);
+    //TODO show Toast
+    //and log to the console
+    error2(JsValue::from_str(err), js_err);
 }
 
 //#[wasm_bindgen(start)]
@@ -49,22 +47,21 @@ pub fn init_ui() {
     let window = window().expect("no global `window` exists");
     let document = window.document();
     unsafe {
-      DOCUMENT = document;
+        DOCUMENT = document;
     }
     let document = get_document_ref();
 
-    if let Err(e) = 
-        list::setup(document)
-        .and_then(|_| ctx::setup_ctx_men(document) )
-        .and_then(|_| resize::setup_resize(document) )
+    if let Err(e) = list::setup(document)
+        .and_then(|_| ctx::setup_ctx_men(document))
+        .and_then(|_| resize::setup_resize(document))
         .and_then(|_| {
             let loc = document.location().unwrap();
             ws::start_websocket(loc)
-        }) {
-          show_error_w_val("could not initialize", e);
+        })
+    {
+        show_error_w_val("could not initialize", e);
     }
 }
-
 
 /*
 fetch('coffee.jpg')

@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server};
-use tokio::sync::{Mutex, broadcast, RwLock};
+use tokio::sync::{broadcast, RwLock};
 
 use regex::RegexSet;
 use std::sync::Arc;
@@ -16,14 +16,14 @@ use std::path::Path;
 use websocket_codec::Message;
 type Notifier = broadcast::Sender<Message>;
 
+mod ca;
+mod db;
 mod proxy;
 mod server;
 mod uplink;
-mod ca;
-mod db;
-use uplink::{make_client, HTTPClient};
 use ca::CA;
 use db::DB;
+use uplink::{make_client, HTTPClient};
 
 pub struct Cfg {
     fileserver: Static,
@@ -34,7 +34,7 @@ pub struct Cfg {
 struct Settings {
     ca: CA,
     dont_intercept: RegexSet,
-    db: DB
+    db: DB,
 }
 
 #[tokio::main]
@@ -52,33 +52,34 @@ async fn main() {
             return;
         }
     };
-    
+
     let dont_intercept = RegexSet::new(&[
         r".+\.google\..+",
         r".+\.github\.com(:[0-9]+)?",
         r".+\.docs\.rs(:[0-9]+)?",
-    ]).unwrap();
+    ])
+    .unwrap();
 
     // Create the TLS acceptor.
     let db = match DB::new() {
         Ok(db) => db,
         Err(e) => {
             eprintln!("could not setup a PKI:");
-            //eprintln!("{:?}", e);
+            eprintln!("{:?}", e);
             return;
         }
     };
     let settings = RwLock::new(Settings {
         ca,
         dont_intercept,
-        db
+        db,
     });
     let client = make_client();
     let cfg = Arc::new(Cfg {
         fileserver,
         broadcast,
         settings,
-        client
+        client,
     });
 
     let make_service = make_service_fn(move |_| {
@@ -96,9 +97,7 @@ async fn main() {
     }
 }
 
-async fn proxy(req: Request<Body>, cfg: Arc<Cfg>)
- -> Result<Response<Body>, hyper::Error>
-{
+async fn proxy(req: Request<Body>, cfg: Arc<Cfg>) -> Result<Response<Body>, hyper::Error> {
     //println!("req: {:?}", req);
     //req: Request { method: CONNECT, uri: doc.rust-lang.org:443, version: HTTP/1.1, headers: {"user-agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0", "proxy-connection": "keep-alive", "connection": "keep-alive", "host": "doc.rust-lang.org:443"}, body: Body(Empty) }
     //req: Request { method: GET, uri: http://drak.li/, version: HTTP/1.1, headers: {"host": "drak.li", "user-agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0", "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8", "accept-language": "en-US,en;q=0.5", "accept-encoding": "gzip, deflate", "connection": "keep-alive", "upgrade-insecure-requests": "1", "dnt": "1"}, body: Body(Empty) }

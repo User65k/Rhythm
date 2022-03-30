@@ -1,20 +1,19 @@
 #[cfg(not(target_arch = "wasm32"))]
-use serde::{Deserializer, de::Error as SerdeErr};
+use flexbuffers::{FlexbufferSerializer, SerializationError};
 #[cfg(not(target_arch = "wasm32"))]
-use std::str::FromStr;
+use hyper::{http::request, http::response, Version};
 #[cfg(not(target_arch = "wasm32"))]
-use std::fmt::Display;
+use serde::{de::Error as SerdeErr, Deserializer};
+use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use sled::IVec;
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
-use hyper::{http::request, http::response, Version};
-#[cfg(not(target_arch = "wasm32"))]
 use std::convert::{From, TryInto};
 #[cfg(not(target_arch = "wasm32"))]
-use flexbuffers::{FlexbufferSerializer, SerializationError};
-use serde::{Deserialize, Serialize};
-
+use std::fmt::Display;
+#[cfg(not(target_arch = "wasm32"))]
+use std::str::FromStr;
 
 /// Data requested by the ui via REST
 #[derive(Debug)]
@@ -22,17 +21,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize)]
 #[serde(tag = "op")]
 pub enum APICall {
-    Details{id: u64}, //get whole Req-Resp
-    Brief{#[serde(deserialize_with = "from_str")] id: u64}, //get Req-Resp for bottom list
-    //StartApp{path: PathBuf},
-    //Send{req: !},
-    //Alter{id: u64, req: !},
+    Details {
+        id: u64,
+    }, //get whole Req-Resp
+    Brief {
+        #[serde(deserialize_with = "from_str")]
+        id: u64,
+    }, //get Req-Resp for bottom list
+       //StartApp{path: PathBuf},
+       //Send{req: !},
+       //Alter{id: u64, req: !},
 }
 #[cfg(not(target_arch = "wasm32"))]
 fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
-    where T: FromStr,
-          T::Err: Display,
-          D: Deserializer<'de>
+where
+    T: FromStr,
+    T::Err: Display,
+    D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
     T::from_str(&s).map_err(SerdeErr::custom)
@@ -42,8 +47,15 @@ fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "t")]
 pub enum WSNotify {
-    NewReq {id: u64, method: String, uri: String},
-    NewResp{id: u64, status: u16},
+    NewReq {
+        id: u64,
+        method: String,
+        uri: String,
+    },
+    NewResp {
+        id: u64,
+        status: u16,
+    },
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -84,14 +96,14 @@ impl From<&request::Parts> for Request {
     fn from(parts: &request::Parts) -> Self {
         let version = vers_to_index(parts.version);
         let mut headers: HashMap<String, Vec<u8>> = HashMap::new();
-        for (k,v) in parts.headers.iter() {
+        for (k, v) in parts.headers.iter() {
             headers.insert(k.to_string(), v.as_bytes().into());
         }
         Request {
-            version, 
+            version,
             uri: parts.uri.to_string(),
             method: parts.method.to_string(),
-            headers
+            headers,
         }
     }
 }
@@ -102,13 +114,13 @@ impl From<&response::Parts> for Response {
     fn from(parts: &response::Parts) -> Self {
         let version = vers_to_index(parts.version);
         let mut headers: HashMap<String, Vec<u8>> = HashMap::new();
-        for (k,v) in parts.headers.iter() {
+        for (k, v) in parts.headers.iter() {
             headers.insert(k.to_string(), v.as_bytes().into());
         }
         Response {
             status: parts.status.as_u16(),
             version,
-            headers
+            headers,
         }
     }
 }
@@ -116,10 +128,9 @@ impl From<&response::Parts> for Response {
 #[cfg(not(target_arch = "wasm32"))]
 impl TryInto<IVec> for Request {
     fn try_into(self) -> Result<IVec, SerializationError> {
-        
         let mut s = FlexbufferSerializer::new();
         self.serialize(&mut s)?;
-        
+
         Ok(s.view().into())
     }
 
@@ -129,10 +140,9 @@ impl TryInto<IVec> for Request {
 #[cfg(not(target_arch = "wasm32"))]
 impl TryInto<IVec> for Response {
     fn try_into(self) -> Result<IVec, SerializationError> {
-        
         let mut s = FlexbufferSerializer::new();
         self.serialize(&mut s)?;
-        
+
         Ok(s.view().into())
     }
     type Error = SerializationError;
@@ -147,6 +157,6 @@ fn vers_to_index(version: Version) -> u8 {
         Version::HTTP_11 => 11,
         Version::HTTP_2 => 2,
         Version::HTTP_3 => 3,
-        _ => 0
+        _ => 0,
     }
 }

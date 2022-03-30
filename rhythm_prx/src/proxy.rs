@@ -1,47 +1,57 @@
+use hyper::server::conn::{AddrStream, Http};
 use hyper::service::service_fn;
 use hyper::{Body, Request, Response, Uri};
-use hyper::server::conn::{Http, AddrStream};
 
 use http::uri::Authority;
 use tokio::{net::TcpStream, sync::Mutex};
 
 use futures_util::future::try_join;
 
-use crate::{Cfg, Notifier, Settings, ca::CA, db::DB, uplink::{HTTPClient, make_tcp_con}};
+use crate::{
+    ca::CA,
+    db::DB,
+    uplink::{make_tcp_con, HTTPClient},
+    Cfg, Notifier, Settings,
+};
 use regex::RegexSet;
-use std::sync::{Arc, RwLockReadGuard};
 use std::io;
+use std::sync::{Arc, RwLockReadGuard};
 
-use std::error::Error;
+use log::{debug, error, info};
 use rhythm_proto::WSNotify;
-use log::{info, error, debug};
+use std::error::Error;
 use websocket_codec::Message;
 
-async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, db: DB) -> Result<Response<Body>, hyper::Error>
-{
+async fn http_mitm(
+    req: Request<Body>,
+    client: HTTPClient,
+    broadcast: Notifier,
+    db: DB,
+) -> Result<Response<Body>, hyper::Error> {
     //let _a = broadcast.send(req.uri().to_string()).is_ok();
-    
+
     //store request in DB
     let (req_parts, body) = req.into_parts();
     let body = hyper::body::to_bytes(body).await?;
     let req_id = db.store_req(&req_parts, &body);
-    
+
     if let Ok(id) = &req_id {
         let i = WSNotify::NewReq {
             id: *id,
             method: req_parts.method.to_string(),
-            uri: req_parts.uri.to_string()
+            uri: req_parts.uri.to_string(),
         };
         if let Ok(data) = i.as_u8() {
             let _a = broadcast.send(Message::binary(data)).is_ok();
         }
     }
-    
+
     let mut req = Request::builder()
         .method(req_parts.method.clone())
         .uri(req_parts.uri.clone())
         .version(req_parts.version)
-        .body(body.into()).unwrap();
+        .body(body.into())
+        .unwrap();
     *req.headers_mut() = req_parts.headers.clone();
     //let req = Request::from_parts(req_parts, body.into());
     info!("plain req: {:?}", req.uri());
@@ -50,7 +60,7 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
 
     //forward request
     let rep = client.request(req).await.unwrap_or_else(|err| {
-        let e = format!("<html><body><h1>Rhythm</h1> {}</body></html>",err);
+        let e = format!("<html><body><h1>Rhythm</h1> {}</body></html>", err);
         let mut resp = Response::new(Body::from(e));
         *resp.status_mut() = hyper::StatusCode::BAD_GATEWAY;
 
@@ -64,7 +74,10 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
             loop {
                 error!("{}", e);
                 e = match e.source() {
-                    Some(e) => {error!("caused by:");e},
+                    Some(e) => {
+                        error!("caused by:");
+                        e
+                    }
                     None => break,
                 }
             }
@@ -92,13 +105,13 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
 
             let i = WSNotify::NewResp {
                 id: req_id,
-                status: parts.status.as_u16()
+                status: parts.status.as_u16(),
             };
             if let Ok(data) = i.as_u8() {
                 let _a = broadcast.send(Message::binary(data)).is_ok();
             }
-        },
-        Err(e) => error!("{:?}", e)
+        }
+        Err(e) => error!("{:?}", e),
     }
 
     let rep = Response::from_parts(parts, body.into());
@@ -108,17 +121,18 @@ async fn http_mitm(req: Request<Body>, client: HTTPClient, broadcast: Notifier, 
     Ok(rep)
 }
 
-async fn upgrade_proxy_req(resp: hyper::http::response::Parts,
-                            req: hyper::http::request::Parts,
-                            req_id: Result<u64,crate::db::DBErr>)
-    -> Result<Response<Body>, hyper::Error>
-{
-    
+async fn upgrade_proxy_req(
+    resp: hyper::http::response::Parts,
+    req: hyper::http::request::Parts,
+    req_id: Result<u64, crate::db::DBErr>,
+) -> Result<Response<Body>, hyper::Error> {
     let mut rep2ret = Response::builder()
         .status(resp.status)
-        .version(resp.version).body(Body::empty()).unwrap();
+        .version(resp.version)
+        .body(Body::empty())
+        .unwrap();
     *rep2ret.headers_mut() = resp.headers.clone();
-    
+
     let rep = Response::from_parts(resp, Body::empty());
     let mut req = Request::from_parts(req, Body::empty());
     //consume server aw
@@ -138,26 +152,32 @@ async fn upgrade_proxy_req(resp: hyper::http::response::Parts,
 
                             try_join(client_to_server, server_to_client).await
                         };
-                    },
-                    Err(e) => error!("Error client upgrade {}",e),
+                    }
+                    Err(e) => error!("Error client upgrade {}", e),
                     //Error client upgrade upgrade expected but low level API in use
                 }
             });
             println!("plain rep 2upgr: {:?}", rep2ret.status());
 
             Ok(rep2ret)
-        },
+        }
         Err(err) => {
-            error!("Error server upgrade {}",err);
-            let e = format!("<html><body><h1>Rhythm</h1>Upgrade {}</body></html>",err);
+            error!("Error server upgrade {}", err);
+            let e = format!("<html><body><h1>Rhythm</h1>Upgrade {}</body></html>", err);
             let mut resp = Response::new(Body::from(e));
             *resp.status_mut() = hyper::StatusCode::BAD_GATEWAY;
             Ok(resp)
-        },
+        }
     }
 }
 
-async fn tls_mitm(tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, client: HTTPClient, settings: &Settings) -> Result<(), Box<dyn Error>> {
+async fn tls_mitm(
+    tcp_stream: TcpStream,
+    auth: &Authority,
+    broadcast: Notifier,
+    client: HTTPClient,
+    settings: &Settings,
+) -> Result<(), Box<dyn Error>> {
     /*
     read first 6 byte and check if it is TLS to
     support other things than HTTPS here
@@ -173,8 +193,9 @@ async fn tls_mitm(tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, 
     ?   //len
     1 //client hello
     */
-    if (n>1 && b1[0]==0x16 && b1[1] == 0x3) {//TLS1.0, TLS1.1, TLS1.2, TLS1.3
-    
+    if n > 1 && b1[0] == 0x16 && b1[1] == 0x3 {
+        //TLS1.0, TLS1.1, TLS1.2, TLS1.3
+
         let cert = settings.ca.get_cert_for(auth.host()).await?;
         let tls_acceptor =
             tokio_native_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
@@ -183,16 +204,16 @@ async fn tls_mitm(tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, 
         //TODO check for protocoll (everything but TLS) again
         let auth_str = auth.as_str();
 
-        let some_service = service_fn(move |mut req|{
+        let some_service = service_fn(move |mut req| {
             let url = if let Some(pq) = req.uri().path_and_query() {
                 Uri::builder()
-                .scheme(http::uri::Scheme::HTTPS)
-                .authority(auth_str)
-                .path_and_query(pq.as_str())
-            }else{
+                    .scheme(http::uri::Scheme::HTTPS)
+                    .authority(auth_str)
+                    .path_and_query(pq.as_str())
+            } else {
                 Uri::builder()
-                .scheme(http::uri::Scheme::HTTPS)
-                .authority(auth_str)
+                    .scheme(http::uri::Scheme::HTTPS)
+                    .authority(auth_str)
             };
             *req.uri_mut() = url.build().unwrap();
             let client = client.clone();
@@ -200,31 +221,30 @@ async fn tls_mitm(tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, 
         });
         let http = Http::new();
         let conn = http.serve_connection(tls_stream, some_service);
-        
+
         return Ok(conn.with_upgrades().await?);
     }
-    let mut try_http = true;//OPTIONS / HTTP/1.1  ~9 ALPHA, URL, HTTP/N.N
-    let mut x = 0;
-    for b in b1.iter() {
-        if *b == b' ' || x>=n {
+    let mut try_http = true; //OPTIONS / HTTP/1.1  ~9 ALPHA, URL, HTTP/N.N
+    for (x, b) in b1.iter().enumerate() {
+        if *b == b' ' || x >= n {
             break;
         }
-        if b'A'>*b || *b>b'Z' {
+        if !(b'A'..=b'Z').contains(b) {
             try_http = false;
             break;
         }
-        x += 1;
     }
-    if (try_http) { //HTTP1.x
+    if try_http {
+        //HTTP1.x
         let auth_str = auth.as_str();
 
-        let some_service = service_fn(move |mut req|{
+        let some_service = service_fn(move |mut req| {
             let url = Uri::builder()
                 .scheme(http::uri::Scheme::HTTP)
                 .authority(auth_str);
             let url = if let Some(pq) = req.uri().path_and_query() {
                 url.path_and_query(pq.as_str())
-            }else{
+            } else {
                 url
             };
             *req.uri_mut() = url.build().unwrap();
@@ -247,12 +267,8 @@ async fn tls_mitm(tcp_stream: TcpStream, auth: &Authority, broadcast: Notifier, 
 // the upgraded connection
 async fn pass_throught(tcp_stream: TcpStream, auth: &Authority) -> std::io::Result<()> {
     // Connect to remote server
-    let uri = Uri::builder()
-        .authority(auth.clone())
-        .build()
-        .unwrap();
+    let uri = Uri::builder().authority(auth.clone()).build().unwrap();
     let mut server = make_tcp_con(uri).await?;
-    
 
     // Proxying data
     let _amounts = {
@@ -269,7 +285,7 @@ async fn pass_throught(tcp_stream: TcpStream, auth: &Authority) -> std::io::Resu
 /*
 ///transparent proxy with pass_throught PoC
 use tokio::net::TcpListener;
-pub async fn transparent_prxy() -> std::io::Result<()> {    
+pub async fn transparent_prxy() -> std::io::Result<()> {
     let mut listener = TcpListener::bind("127.0.0.1:3389").await?;
 
     loop {
@@ -280,20 +296,34 @@ pub async fn transparent_prxy() -> std::io::Result<()> {
     Ok(())
 }// */
 
-pub async fn process_http_req(req: Request<Body>, cfg: Arc<Cfg>) -> Result<Response<Body>, hyper::Error>
-{
+pub async fn process_http_req(
+    req: Request<Body>,
+    cfg: Arc<Cfg>,
+) -> Result<Response<Body>, hyper::Error> {
     let settings = cfg.settings.read().await;
-    http_mitm(req, cfg.client.clone(), cfg.broadcast.clone(), settings.db.clone()).await
+    http_mitm(
+        req,
+        cfg.client.clone(),
+        cfg.broadcast.clone(),
+        settings.db.clone(),
+    )
+    .await
 }
-pub async fn process_connect_req(mut req: Request<Body>, cfg: Arc<Cfg>) -> Result<Response<Body>, hyper::Error>
-{
-    match req.uri().authority(){
+pub async fn process_connect_req(
+    mut req: Request<Body>,
+    cfg: Arc<Cfg>,
+) -> Result<Response<Body>, hyper::Error> {
+    match req.uri().authority() {
         None => {
-            error!("CONNECT must contain an endpoint to connect to: {:?}", req.uri());
-            let mut resp = Response::new(Body::from("CONNECT must contain an endpoint to connect to"));
+            error!(
+                "CONNECT must contain an endpoint to connect to: {:?}",
+                req.uri()
+            );
+            let mut resp =
+                Response::new(Body::from("CONNECT must contain an endpoint to connect to"));
             *resp.status_mut() = hyper::StatusCode::BAD_REQUEST;
             Ok(resp)
-        },
+        }
         Some(a) => {
             debug!("Connection request for {}", a.as_str());
             let auth = a.clone();
@@ -302,24 +332,35 @@ pub async fn process_connect_req(mut req: Request<Body>, cfg: Arc<Cfg>) -> Resul
                 match hyper::upgrade::on(&mut req).await {
                     Ok(upgraded) => {
                         let settings = cfg.settings.read().await;
-                        let parts = upgraded.downcast::<AddrStream>().expect("upgrade not AddrStream");
+                        let parts = upgraded
+                            .downcast::<AddrStream>()
+                            .expect("upgrade not AddrStream");
                         //ignore parts.read_buf - its empty in case of HTTP CONNECT
                         let tcp_stream = parts.io.into_inner();
 
                         if settings.dont_intercept.is_match(auth.as_str()) {
                             if let Err(e) = pass_throught(tcp_stream, &auth).await {
                                 error!("server io error for {}: {}", &auth, &e);
-                                let _ = cfg.broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
+                                let _ = cfg
+                                    .broadcast
+                                    .send(Message::text(format!("{}: {}", &auth, &e)))
+                                    .is_ok();
                             };
-                        }else{
+                        } else {
                             if let Err(e) = tls_mitm(
-                                    tcp_stream,
-                                    &auth,
-                                    cfg.broadcast.clone(),
-                                    cfg.client.clone(),
-                                    &settings).await {
+                                tcp_stream,
+                                &auth,
+                                cfg.broadcast.clone(),
+                                cfg.client.clone(),
+                                &settings,
+                            )
+                            .await
+                            {
                                 error!("server error for {}:", &auth);
-                                let _ = cfg.broadcast.send(Message::text(format!("{}: {}", &auth, &e))).is_ok();
+                                let _ = cfg
+                                    .broadcast
+                                    .send(Message::text(format!("{}: {}", &auth, &e)))
+                                    .is_ok();
                                 let mut e = &*e;
                                 loop {
                                     error!("\t{}", e);
@@ -330,8 +371,8 @@ pub async fn process_connect_req(mut req: Request<Body>, cfg: Arc<Cfg>) -> Resul
                                 }
                             };
                         }
-                    },
-                    Err(e) => error!("upgrade error: {}", e),  //TODO forward the error to the UI
+                    }
+                    Err(e) => error!("upgrade error: {}", e), //TODO forward the error to the UI
                 }
             });
             Ok(Response::new(Body::empty()))

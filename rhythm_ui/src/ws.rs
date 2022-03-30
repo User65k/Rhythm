@@ -1,12 +1,11 @@
+use crate::{list::new_item, show_error, show_error_w_val};
+use js_sys::{ArrayBuffer, JsString, Uint8Array};
+use rhythm_proto::WSNotify;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::{show_error_w_val, show_error, list::new_item};
-use rhythm_proto::WSNotify;
-use web_sys::{Location, WebSocket, BinaryType, MessageEvent, ErrorEvent};
-use js_sys::{ArrayBuffer, Uint8Array, JsString};
+use web_sys::{BinaryType, ErrorEvent, Location, MessageEvent, WebSocket};
 
 pub fn start_websocket(loc: Location) -> Result<(), JsValue> {
-
     let mut url = String::from("ws");
     {
         if "https" == loc.protocol()? {
@@ -45,14 +44,14 @@ fn on_msg(e: MessageEvent) {
         match WSNotify::parse(&array.to_vec()) {
             Ok(todo) => {
                 if let Err(e) = match todo {
-                    WSNotify::NewReq{id, method, uri} => new_item(id, method, uri),
-                    WSNotify::NewResp{id, status} => {Ok(())},
-                    _ => Err(format!("server says: {:?}",&todo).into())
+                    WSNotify::NewReq { id, method, uri } => new_item(id, method, uri),
+                    WSNotify::NewResp { id, status } => Ok(()),
+                    _ => Err(format!("server says: {:?}", &todo).into()),
                 } {
                     show_error_w_val("error handling ws: ", e);
                 }
-            },
-            Err(e) => show_error(&format!("could not parse ws data: {}",e))
+            }
+            Err(e) => show_error(&format!("could not parse ws data: {}", e)),
         }
     } else if let Ok(txt) = e.data().dyn_into::<JsString>() {
         let s: String = txt.into();

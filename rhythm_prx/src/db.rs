@@ -1,17 +1,16 @@
-use sled::{Db, Error as SledErr, IVec};
-use std::{collections::HashMap, convert::TryInto, path::Path};
-use std::error::Error;
-use std::convert::From;
 use flexbuffers::SerializationError;
+use hyper::{body::Bytes, http::request, http::response};
 use rhythm_proto::{Request, Response};
-use hyper::{http::request, http::response, body::Bytes};
-
+use sled::{Db, Error as SledErr, IVec};
+use std::convert::From;
+use std::error::Error;
+use std::{collections::HashMap, convert::TryInto, path::Path};
 
 #[derive(Debug)]
 pub enum DBErr {
     Sled(SledErr),
     //NoProto(NP_Error)
-    ArchiveBufferError(SerializationError)
+    ArchiveBufferError(SerializationError),
 }
 impl From<SledErr> for DBErr {
     fn from(error: SledErr) -> Self {
@@ -26,21 +25,19 @@ impl From<SerializationError> for DBErr {
 
 #[derive(Clone)]
 pub struct DB {
-    db: Db
+    db: Db,
 }
 
 impl DB {
-    pub fn new() -> Result<DB,DBErr> {
+    pub fn new() -> Result<DB, DBErr> {
         DB::open(Path::new("/tmp/rhythm"))
     }
-    pub fn open(file_name: &Path) -> Result<DB,DBErr> {
+    pub fn open(file_name: &Path) -> Result<DB, DBErr> {
         let db = sled::open(file_name)?;
-        Ok(DB {
-            db
-        })
+        Ok(DB { db })
     }
-    pub fn save_to_disk(&self, file_name: &str) -> Result<(),DBErr> {
-        Ok(self.db.flush().map(|_|())?)
+    pub fn save_to_disk(&self, file_name: &str) -> Result<(), DBErr> {
+        Ok(self.db.flush().map(|_| ())?)
     }
     pub fn store_req(&self, parts: &request::Parts, body: &Bytes) -> Result<u64, DBErr> {
         let last_key = self.db.generate_id()?;
@@ -57,7 +54,7 @@ impl DB {
     pub fn store_resp(&self, req: u64, parts: &response::Parts, body: &Bytes) -> Result<(), DBErr> {
         let resp: Response = parts.into();
         let iv: IVec = resp.try_into()?;
-        
+
         let resp_store = self.db.open_tree(b"resp")?;
         let resp_body_store = self.db.open_tree(b"respbod")?;
 
@@ -65,14 +62,13 @@ impl DB {
         resp_body_store.insert(req.to_be_bytes(), body.as_ref())?;
         Ok(())
     }
-    pub fn get_req_resp(&self) -> Result<(),()> {
+    pub fn get_req_resp(&self) -> Result<(), ()> {
         Ok(())
     }
-    pub fn search_req(&self) -> Result<(),()> {
+    pub fn search_req(&self) -> Result<(), ()> {
         Ok(())
     }
-    pub fn search_resp(&self) -> Result<(),()> {
+    pub fn search_resp(&self) -> Result<(), ()> {
         Ok(())
     }
 }
-
