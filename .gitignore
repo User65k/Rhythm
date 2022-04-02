@@ -1,2 +1,9 @@
 /target
 **/*.rs.bk
+style.css
+main.js
+main.wasm
+index.html
+ca_key.der
+ca_cert.der
+Cargo.lock
