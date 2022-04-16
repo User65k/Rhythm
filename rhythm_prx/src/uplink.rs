@@ -26,6 +26,7 @@ use std::time::Duration;
 
 use std::net::ToSocketAddrs;
 use tokio::net::TcpStream;
+use tokio_native_tls::{native_tls::TlsConnector as NativeTlsConnector, TlsConnector};
 
 pub type HTTPClient = Client<TimeoutConnector<HttpsConnector<Uplink>>, Body>;
 
@@ -264,13 +265,13 @@ pub fn make_client() -> HTTPClient {
 
     //let proxies = Uplink::new(Vec::new());
 
-    let mut tls_connector_builder = native_tls::TlsConnector::builder();
+    let mut tls_connector_builder = NativeTlsConnector::builder();
     tls_connector_builder.danger_accept_invalid_certs(true);
     let tls_connector = tls_connector_builder
         .build()
         .expect("TLS initialization failed");
     let https =
-        HttpsConnector::from((proxies, tokio_native_tls::TlsConnector::from(tls_connector)));
+        HttpsConnector::from((proxies, TlsConnector::from(tls_connector)));
 
     let timeout = Some(Duration::from_secs(5));
     let mut toc = TimeoutConnector::new(https);

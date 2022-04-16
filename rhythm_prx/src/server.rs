@@ -1,4 +1,5 @@
 use futures_util::SinkExt;
+use hyper::body::Bytes;
 use hyper::{header, Body, Request, Response};
 
 use hyper_staticfile::Static;
@@ -119,8 +120,34 @@ async fn api(
         APICall::Brief { id } => {
             //ID 	Time 	Method 	Host 	        Path 	Code+Reason 	RTT 	Size 	Tags
             *resp.body_mut() = Body::from("[0,0,\"GET\",\"example.com\",\"???\",200,1,2000,[]]");
-        }
-        _ => {}
+        },
+        APICall::Headers { id } => {
+            match cfg.settings.read().await.db.get_req_resp(id) {
+                Ok(None) => return Err((hyper::StatusCode::NOT_FOUND, "ID not found in DB".to_string())),
+                Err(e) => return Err((hyper::StatusCode::INTERNAL_SERVER_ERROR, format!("DB Error: {:?}", e))),
+                Ok(Some((req, resp))) => {
+
+                },
+            }
+        },
+        APICall::ReqBody { id } => {
+            match cfg.settings.read().await.db.get_req_body(id) {
+                Ok(None) => return Err((hyper::StatusCode::NOT_FOUND, "ID not found in DB".to_string())),
+                Err(e) => return Err((hyper::StatusCode::INTERNAL_SERVER_ERROR, format!("DB Error: {:?}", e))),
+                Ok(Some(b)) => {
+                    
+                },
+            }
+        },
+        APICall::RespBody { id } => {
+            match cfg.settings.read().await.db.get_resp_body(id) {
+                Ok(None) => return Err((hyper::StatusCode::NOT_FOUND, "ID not found in DB".to_string())),
+                Err(e) => return Err((hyper::StatusCode::INTERNAL_SERVER_ERROR, format!("DB Error: {:?}", e))),
+                Ok(Some(b)) => {
+
+                },
+            }
+        },
     }
 
     Ok(resp)

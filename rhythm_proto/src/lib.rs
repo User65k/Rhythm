@@ -1,8 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use flexbuffers::{FlexbufferSerializer, SerializationError};
 #[cfg(not(target_arch = "wasm32"))]
-use hyper::{http::request, http::response, Version};
-#[cfg(not(target_arch = "wasm32"))]
 use serde::{de::Error as SerdeErr, Deserializer};
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
@@ -21,17 +19,27 @@ use std::str::FromStr;
 #[derive(Deserialize)]
 #[serde(tag = "op")]
 pub enum APICall {
-    Details {
+    ///get whole Req-Resp headers
+    Headers {
         id: u64,
-    }, //get whole Req-Resp
+    },
+    ///get Req-Resp for bottom list
     Brief {
-        #[serde(deserialize_with = "from_str")]
+        //#[serde(deserialize_with = "from_str")]
         id: u64,
-    }, //get Req-Resp for bottom list
+    },
+    /// get body of req
+    ReqBody {
+        id: u64,
+    },
+    /// get body of resp
+    RespBody {
+        id: u64,
+    },    
        //StartApp{path: PathBuf},
        //Send{req: !},
        //Alter{id: u64, req: !},
-}
+}/*
 #[cfg(not(target_arch = "wasm32"))]
 fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 where
@@ -41,7 +49,7 @@ where
 {
     let s = String::deserialize(deserializer)?;
     T::from_str(&s).map_err(SerdeErr::custom)
-}
+}*/
 
 /// Data sent over the Websocket from prx to ui
 #[derive(Serialize, Deserialize, Debug)]
@@ -74,54 +82,73 @@ impl WSNotify {
     }
 }
 
+/// HTTP Request Header stored in DB
+/// 
+/// Without fieldnames, as flexbuffers would include them in each dataset
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Request {
-    pub method: String,
-    pub uri: String,
-    pub version: u8,
-    pub headers: HashMap<String, Vec<u8>>,
-}
+pub struct Request (
+    Method,
+    //HTTP Version
+    HttpVersion,
+    //URI
+    String,
+    HashMap<String, Vec<u8>>,
+);
+
+/// HTTP Response Header stored in DB
+/// 
+/// Without fieldnames, as flexbuffers would include them in each dataset
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Response {
-    pub status: u16,
-    /// The response's version
-    pub version: u8,
-    /// The response's headers
-    pub headers: HashMap<String, Vec<u8>>,
+pub struct Response (
+    //Response Code
+    u16,
+    // The response's version
+    HttpVersion,
+    // The response's headers
+    HashMap<String, Vec<u8>>,
+);
+
+/// HTTP Method stored in DB
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Method {
+    WellKnown(u8), //one byte less then an empty vec
+    Custom(Vec<u8>)
 }
+/// HTTP Method stored in DB
+#[derive(Serialize, Deserialize, Debug)]
+pub struct HttpVersion(u8);
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<&request::Parts> for Request {
+impl From<&hyper::http::request::Parts> for Request {
     #[inline]
-    fn from(parts: &request::Parts) -> Self {
-        let version = vers_to_index(parts.version);
+    fn from(parts: &hyper::http::request::Parts) -> Self {
         let mut headers: HashMap<String, Vec<u8>> = HashMap::new();
         for (k, v) in parts.headers.iter() {
             headers.insert(k.to_string(), v.as_bytes().into());
         }
-        Request {
-            version,
-            uri: parts.uri.to_string(),
-            method: parts.method.to_string(),
+        Request(
+            (&parts.method).into(),
+            parts.version.into(),
+            parts.uri.to_string(),
             headers,
-        }
+        )
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<&response::Parts> for Response {
+impl From<&hyper::http::response::Parts> for Response {
     #[inline]
-    fn from(parts: &response::Parts) -> Self {
-        let version = vers_to_index(parts.version);
+    fn from(parts: &hyper::http::response::Parts) -> Self {
         let mut headers: HashMap<String, Vec<u8>> = HashMap::new();
         for (k, v) in parts.headers.iter() {
             headers.insert(k.to_string(), v.as_bytes().into());
         }
-        Response {
-            status: parts.status.as_u16(),
-            version,
+        Response (
+            parts.status.as_u16(),
+            parts.version.into(),
             headers,
-        }
+        )
     }
 }
 
@@ -148,15 +175,35 @@ impl TryInto<IVec> for Response {
     type Error = SerializationError;
 }
 
-#[inline]
 #[cfg(not(target_arch = "wasm32"))]
-fn vers_to_index(version: Version) -> u8 {
-    match version {
-        Version::HTTP_09 => 9,
-        Version::HTTP_10 => 10,
-        Version::HTTP_11 => 11,
-        Version::HTTP_2 => 2,
-        Version::HTTP_3 => 3,
-        _ => 0,
+impl From<&hyper::Method> for Method {
+    #[inline]
+    fn from(method: &hyper::Method) -> Self {
+        match method {
+            &hyper::Method::GET     => Method::WellKnown(0),
+            &hyper::Method::HEAD    => Method::WellKnown(1),
+            &hyper::Method::POST    => Method::WellKnown(2),
+            &hyper::Method::PUT     => Method::WellKnown(3),
+            &hyper::Method::DELETE  => Method::WellKnown(4),
+            &hyper::Method::CONNECT => Method::WellKnown(5),
+            &hyper::Method::OPTIONS => Method::WellKnown(6),
+            &hyper::Method::PATCH   => Method::WellKnown(7),
+            &hyper::Method::TRACE   => Method::WellKnown(8),
+            m => Method::Custom(m.as_str().as_bytes().into())
+        }
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
+impl From<hyper::Version> for HttpVersion {
+    #[inline]
+    fn from(version: hyper::Version) -> Self {
+        HttpVersion(match version {
+            hyper::Version::HTTP_09 => 9,
+            hyper::Version::HTTP_10 => 10,
+            hyper::Version::HTTP_11 => 11,
+            hyper::Version::HTTP_2 => 2,
+            hyper::Version::HTTP_3 => 3,
+            _ => 0,
+        })
     }
 }

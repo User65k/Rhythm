@@ -45,7 +45,7 @@ Furthermore, Burp and esspecially ZAP could use some proxychains style proxy sup
 - [ ] Client Certificates
 - [ ] Non HTTP
 
-- [ ] Store Stuff in a Database
+- [x] Store Stuff in a Database
 - [ ] strip encodings and gzip
 - [ ] Resend
 - [ ] Alter Requests

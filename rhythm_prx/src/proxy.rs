@@ -13,7 +13,6 @@ use crate::{
     uplink::{make_tcp_con, HTTPClient},
     Cfg, Notifier, Settings,
 };
-use regex::RegexSet;
 use std::io;
 use std::sync::{Arc, RwLockReadGuard};
 
@@ -21,6 +20,7 @@ use log::{debug, error, info};
 use rhythm_proto::WSNotify;
 use std::error::Error;
 use websocket_codec::Message;
+use tokio_native_tls::{native_tls::TlsAcceptor as NTlsAcc, TlsAcceptor};
 
 async fn http_mitm(
     req: Request<Body>,
@@ -198,7 +198,7 @@ async fn tls_mitm(
 
         let cert = settings.ca.get_cert_for(auth.host()).await?;
         let tls_acceptor =
-            tokio_native_tls::TlsAcceptor::from(native_tls::TlsAcceptor::builder(cert).build()?);
+            TlsAcceptor::from(NTlsAcc::builder(cert).build()?);
         let tls_stream = tls_acceptor.accept(tcp_stream).await?;
 
         //TODO check for protocoll (everything but TLS) again
@@ -286,15 +286,16 @@ async fn pass_throught(tcp_stream: TcpStream, auth: &Authority) -> std::io::Resu
 ///transparent proxy with pass_throught PoC
 use tokio::net::TcpListener;
 pub async fn transparent_prxy() -> std::io::Result<()> {
-    let mut listener = TcpListener::bind("127.0.0.1:3389").await?;
+    let mut listener = TcpListener::bind("127.0.0.1:443").await?;
 
     loop {
         let (socket, _) = listener.accept().await?;
         // Proxying data
+
         pass_throught(socket, &Authority::from_static("192.168.2.114:3389")).await?;
     }
     Ok(())
-}// */
+}*/
 
 pub async fn process_http_req(
     req: Request<Body>,
@@ -347,6 +348,7 @@ pub async fn process_connect_req(
                                     .is_ok();
                             };
                         } else {
+                            // intercept!
                             if let Err(e) = tls_mitm(
                                 tcp_stream,
                                 &auth,

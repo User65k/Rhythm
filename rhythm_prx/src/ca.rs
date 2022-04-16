@@ -1,4 +1,4 @@
-use native_tls::Identity;
+use tokio_native_tls::native_tls::Identity;
 use p12::PFX;
 use rcgen::{
     BasicConstraints, Certificate, CertificateParams, DistinguishedName, DnType,
@@ -106,9 +106,9 @@ impl CA {
 
         let password = "";
         let ca_der = self.ca.serialize_der()?;
-
+        
         let p12 = PFX::new(&cert_der, &key_der, Some(&ca_der), password, host_name)
-            .ok_or_else(|| RcgenError::KeyGenerationUnavailable)?
+            .ok_or(RcgenError::KeyGenerationUnavailable)?
             .to_der();
 
         let i = Identity::from_pkcs12(&p12, password)
